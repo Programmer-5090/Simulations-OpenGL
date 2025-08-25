@@ -1,1 +1,0 @@
-../../Cellar/sdl2/2.32.4/include/SDL2/SDL_cpuinfo.h
