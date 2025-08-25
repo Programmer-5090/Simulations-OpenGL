@@ -1,9 +1,0 @@
-libdir=C:/Users/dimai/OneDrive/Documents/Programming/Programming/Tutorials/C++/OpenGL/lib/assimp/lib
-includedir=C:/Users/dimai/OneDrive/Documents/Programming/Programming/Tutorials/C++/OpenGL/lib/assimp/include
-
-Name: Assimp
-Description: Import various well-known 3D model formats in an uniform manner.
-Version: 6.0.2
-Libs: -L${libdir} -lassimp
-Libs.private:  
-Cflags: -I${includedir}
