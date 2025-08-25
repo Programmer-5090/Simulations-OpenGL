@@ -9,10 +9,12 @@
 #include "shader.h"
 #include "camera.h"
 #include "model.h"
-#include "voxel_world.h"
-
+#include "geometry/sphere.h"  // Include your new sphere class
+#include "geometry/circle.h" // Include polygon class for circles
 #include <iostream>
 #include <sstream>
+#include <random>
+#include <vector>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -24,7 +26,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // camera
-Camera camera(glm::vec3(0.0f, 50.0f, 0.0f));
+Camera camera(glm::vec3(0.0f, 2.0f, 0.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -33,13 +35,38 @@ bool firstMouse = true;
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
 
-glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+// Sphere data structure
+struct SphereData {
+    glm::vec3 position;
+    glm::vec3 color;
+    float radius;
+    float rotationSpeed;
+    float currentRotation;
+};
+
+struct CircleData {
+    glm::vec3 position;
+    glm::vec3 color;
+    float radius;
+};
+
+// Generate random float between min and max
+float randomFloat(float min, float max) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(min, max);
+    return dis(gen);
+}
 
 int main()
 {
     // glfw: initialize and configure
     // ------------------------------
-    glfwInit();
+    if (!glfwInit()) {
+        std::cout << "Failed to initialize GLFW" << std::endl;
+        return -1;
+    }
+    
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -76,83 +103,78 @@ int main()
     // configure global opengl state
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // build and compile our shader zprograma
+    // Create VAO for the infinite grid (required for OpenGL Core Profile)
+    unsigned int gridVAO;
+    glGenVertexArrays(1, &gridVAO);
+
+    // build and compile our shader program
     // ------------------------------------
-    Shader ourShader("shaders/vertex.vs", "shaders/fragment.fs");
-
-    // load models
-    // -----------
-    Model ourModel("models/dirt block/cube.obj");
-
-    Model grassBlock("models/grass block/cube.obj");
-
-    Model stoneBlock("models/stone block/cube.obj");
+    std::cout << "Loading shaders..." << std::endl;
+    Shader ourShader("shaders/vertex.vs", "shaders/simple_fragment.fs");
+    std::cout << "Basic shaders loaded successfully" << std::endl;
     
-    // Initialize voxel world
-    VoxelWorld voxelWorld;
-    voxelWorld.initialize();
+    Shader infiniteGridShader("shaders/infinite_grid.vs", "shaders/infinite_grid.fs");
+    std::cout << "Infinite grid shaders loaded successfully" << std::endl;
     
+    // Load normal debug shader
+    Shader normalDebugShader("shaders/normal_debug.vs", "shaders/normal_debug.fs", "shaders/normal_debug.gs");
+    std::cout << "Normal debug shaders loaded successfully" << std::endl;
 
-    // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
-    // -------------------------------------------------------------------------------------------
-    ourShader.use();
-    ourShader.setInt("material.diffuse", 0);
-    ourShader.setInt("material.specular", 1);
-    ourShader.setFloat("material.shininess", 32.0f);
+    // Create your sphere mesh
+    std::cout << "Generating sphere mesh..." << std::endl;
+    Sphere baseSphere(2.0f, 32);  // radius = 2.0, resolution = 32x32
+    Mesh sphereMesh = baseSphere.toMesh();
+    Circle baseCircle(32, 1.0f); // Create a circle with 32 segments and radius 1.0
+    Mesh circleMesh = baseCircle.toMesh();
+    std::cout << "Circle mesh generated successfully" << std::endl;
+    std::cout << "Sphere mesh generated successfully" << std::endl;
 
-    ourShader.setVec3("light.ambient",  glm::vec3(0.2f, 0.2f, 0.2f));
-    ourShader.setVec3("light.diffuse",  glm::vec3(0.5f, 0.5f, 0.5f));
-    ourShader.setVec3("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+    // Generate multiple spheres with random positions and colors
+    const int numSpheres = 8;
+    std::vector<SphereData> spheres;
     
-    ourShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-    ourShader.setVec3("light.position", lightPos);
-    ourShader.setVec3("viewPos", camera.Position); 
+    std::cout << "Generating " << numSpheres << " spheres with random properties..." << std::endl;
+    for (int i = 0; i < numSpheres; ++i) {
+        SphereData sphere;
+        // Random position above the grid
+        sphere.position = glm::vec3(
+            randomFloat(-15.0f, 15.0f),  // X: spread across grid
+            randomFloat(2.0f, 8.0f),     // Y: floating above grid
+            randomFloat(-15.0f, 5.0f)    // Z: in front of and around camera
+        );
+        
+        // Random vibrant colors
+        sphere.color = glm::vec3(
+            randomFloat(0.2f, 1.0f),     // Red component
+            randomFloat(0.2f, 1.0f),     // Green component  
+            randomFloat(0.2f, 1.0f)      // Blue component
+        );
+        
+        // Random size and rotation
+        sphere.radius = randomFloat(0.8f, 2.5f);
+        sphere.rotationSpeed = randomFloat(10.0f, 50.0f);  // degrees per second
+        sphere.currentRotation = randomFloat(0.0f, 360.0f);
+        
+        spheres.push_back(sphere);
+        
+        std::cout << "Sphere " << i << ": pos(" << sphere.position.x << ", " << sphere.position.y 
+                  << ", " << sphere.position.z << ") color(" << sphere.color.r << ", " 
+                  << sphere.color.g << ", " << sphere.color.b << ")" << std::endl;
+    }
 
-    glm::vec3 pointLightPositions[] = {
-        glm::vec3( 0.7f,  0.2f,  2.0f),
-        glm::vec3( 2.3f, -3.3f, -4.0f),
-        glm::vec3(-4.0f,  2.0f, -12.0f),
-        glm::vec3( 0.0f,  0.0f, -3.0f)
-    };
-
-    // directional light
-    ourShader.setVec3("dirLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
-    ourShader.setVec3("dirLight.ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-    ourShader.setVec3("dirLight.diffuse", glm::vec3(0.4f, 0.4f, 0.4f));
-    ourShader.setVec3("dirLight.specular", glm::vec3(0.5f, 0.5f, 0.5f));
-    // point light 1
-    ourShader.setVec3("pointLights[0].position", pointLightPositions[0]);
-    ourShader.setVec3("pointLights[0].ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-    ourShader.setVec3("pointLights[0].diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-    ourShader.setVec3("pointLights[0].specular", glm::vec3(1.0f, 1.0f, 1.0f));
-    ourShader.setFloat("pointLights[0].constant", 1.0f);
-    ourShader.setFloat("pointLights[0].linear", 0.09f);
-    ourShader.setFloat("pointLights[0].quadratic", 0.032f);
-    // point light 2
-    ourShader.setVec3("pointLights[1].position", pointLightPositions[1]);
-    ourShader.setVec3("pointLights[1].ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-    ourShader.setVec3("pointLights[1].diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-    ourShader.setVec3("pointLights[1].specular", glm::vec3(1.0f, 1.0f, 1.0f));
-    ourShader.setFloat("pointLights[1].constant", 1.0f);
-    ourShader.setFloat("pointLights[1].linear", 0.09f);
-    ourShader.setFloat("pointLights[1].quadratic", 0.032f);
-    // point light 3
-    ourShader.setVec3("pointLights[2].position", pointLightPositions[2]);
-    ourShader.setVec3("pointLights[2].ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-    ourShader.setVec3("pointLights[2].diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-    ourShader.setVec3("pointLights[2].specular", glm::vec3(1.0f, 1.0f, 1.0f));
-    ourShader.setFloat("pointLights[2].constant", 1.0f);
-    ourShader.setFloat("pointLights[2].linear", 0.09f);
-    ourShader.setFloat("pointLights[2].quadratic", 0.032f);
-    // point light 4
-    ourShader.setVec3("pointLights[3].position", pointLightPositions[3]);
-    ourShader.setVec3("pointLights[3].ambient", glm::vec3(0.05f, 0.05f, 0.05f));
-    ourShader.setVec3("pointLights[3].diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-    ourShader.setVec3("pointLights[3].specular", glm::vec3(1.0f, 1.0f, 1.0f));
-    ourShader.setFloat("pointLights[3].constant", 1.0f);
-    ourShader.setFloat("pointLights[3].linear", 0.09f);
-    ourShader.setFloat("pointLights[3].quadratic", 0.032f);
+    // Create a simple white texture for the sphere
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    
+    // Create a 1x1 white texture
+    unsigned char whitePixel[] = {255, 255, 255, 255};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, whitePixel);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     
     // render loop
@@ -174,58 +196,113 @@ int main()
         // -----
         processInput(window);
 
-        // Update voxel world based on camera position
-        voxelWorld.update(camera.Position);
-
         // render
         // ------
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // don't forget to enable shader before setting uniforms
-        ourShader.use();
-
-        // spotLight (update every frame to follow camera)
-        ourShader.setVec3("spotLight.position", camera.Position);
-        ourShader.setVec3("spotLight.direction", camera.Front);
-        ourShader.setVec3("spotLight.ambient", glm::vec3(0.0f, 0.0f, 0.0f));
-        ourShader.setVec3("spotLight.diffuse", glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setVec3("spotLight.specular", glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setFloat("spotLight.constant", 1.0f);
-        ourShader.setFloat("spotLight.linear", 0.09f);
-        ourShader.setFloat("spotLight.quadratic", 0.032f);
-        ourShader.setFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
-        ourShader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f)));
-        ourShader.use();
-
-        // view/projection transformations
+        // Calculate view/projection matrices once
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
+
+        // Render infinite grid FIRST (so spheres render on top)
+        infiniteGridShader.use();
+        
+        // Set up view-projection matrix for the grid
+        glm::mat4 viewProjection = projection * view;
+        infiniteGridShader.setMat4("gVP", viewProjection);
+        infiniteGridShader.setVec3("gCameraWorldPos", camera.Position);
+        
+        // Set grid parameters
+        infiniteGridShader.setFloat("gGridSize", 100.0f);
+        infiniteGridShader.setFloat("gGridMinPixelsBetweenCells", 2.0f);
+        infiniteGridShader.setFloat("gGridCellSize", 0.025f);
+        infiniteGridShader.setVec4("gGridColorThin", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        infiniteGridShader.setVec4("gGridColorThick", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        infiniteGridShader.setFloat("gGridAlpha", 0.5f);
+
+        glDepthMask(GL_FALSE);
+        
+        // Bind VAO and render the infinite grid as triangles
+        glBindVertexArray(gridVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glDepthMask(GL_TRUE);
+
+        // Now render spheres on top of the grid
+        ourShader.use();
+
+        // Set up basic material properties for the sphere
+        ourShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+        ourShader.setVec3("viewPos", camera.Position);
+        
+        // Set up basic directional light
+        ourShader.setVec3("dirLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+        ourShader.setVec3("dirLight.ambient", glm::vec3(0.6f, 0.6f, 0.6f));  // Increased ambient for softer shadows
+        ourShader.setVec3("dirLight.diffuse", glm::vec3(0.6f, 0.6f, 0.6f));  // Reduced diffuse to balance
+        ourShader.setVec3("dirLight.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+
+        // view/projection transformations
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
-        // Render voxel world
-        voxelWorld.render(ourShader, view, projection);
+        // Bind the white texture for all spheres
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        ourShader.setInt("texture1", 0);
 
-        // render the loaded models (individual blocks for comparison)
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(50.0f, 10.0f, 50.0f)); // Move far from world center
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setMat4("model", model);
-        ourModel.Draw(ourShader);
+        // Render multiple spheres with different properties
+        for (size_t i = 0; i < spheres.size(); ++i) {
+            auto& sphereData = spheres[i];
+            
+            // Update rotation based on time
+            sphereData.currentRotation += sphereData.rotationSpeed * deltaTime;
+            if (sphereData.currentRotation > 360.0f) {
+                sphereData.currentRotation -= 360.0f;
+            }
+            
+            // Create transformation matrix for this sphere
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, sphereData.position);
+            model = glm::rotate(model, glm::radians(sphereData.currentRotation), glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::rotate(model, glm::radians(sphereData.currentRotation * 0.7f), glm::vec3(1.0f, 0.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(sphereData.radius));
+            
+            // Set uniforms for this sphere
+            ourShader.setMat4("model", model);
+            
+            // Set material properties for reflective appearance
+            ourShader.setVec3("material.ambient", sphereData.color * 0.2f);
+            ourShader.setVec3("material.diffuse", sphereData.color);
+            ourShader.setVec3("material.specular", glm::vec3(1.0f, 1.0f, 1.0f)); // White specular for metallic look
+            ourShader.setFloat("material.shininess", 64.0f); // High shininess for reflective surface
+            
+            // Draw the sphere
+            sphereMesh.Draw(ourShader);
+        }
 
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(55.0f, 10.0f, 50.0f));
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setMat4("model", model);
-         grassBlock.Draw(ourShader);
-
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(52.5f, 10.0f, 47.5f));
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setMat4("model", model);
-        stoneBlock.Draw(ourShader);
-
+        // Debug: Render normal vectors as lines
+        // normalDebugShader.use();
+        // normalDebugShader.setMat4("view", view);
+        // normalDebugShader.setMat4("projection", projection);
+        // normalDebugShader.setFloat("normalLength", 0.5f); // Length of normal arrows
+        
+        // // Render normals for each sphere
+        // for (size_t i = 0; i < spheres.size(); ++i) {
+        //     auto& sphereData = spheres[i];
+            
+        //     // Same transformation as the sphere
+        //     glm::mat4 model = glm::mat4(1.0f);
+        //     model = glm::translate(model, sphereData.position);
+        //     model = glm::rotate(model, glm::radians(sphereData.currentRotation), glm::vec3(0.0f, 1.0f, 0.0f));
+        //     model = glm::rotate(model, glm::radians(sphereData.currentRotation * 0.7f), glm::vec3(1.0f, 0.0f, 0.0f));
+        //     model = glm::scale(model, glm::vec3(sphereData.radius));
+            
+        //     normalDebugShader.setMat4("model", model);
+            
+        //     // Draw normal vectors as lines
+        //     sphereMesh.Draw(normalDebugShader);
+        // }
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -235,6 +312,7 @@ int main()
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
+    glDeleteVertexArrays(1, &gridVAO);
     glfwTerminate();
     return 0;
 }

@@ -43,6 +43,11 @@ scratch.txt
 .vs/
 .vscode/
 *.cbp
+.VSCodeCounter/
+
+# libraries
+lib/
+includes/
 
 # Object files
 *.o
