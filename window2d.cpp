@@ -23,7 +23,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // Fixed physics constants for stability
-const float GRAVITY = 8.0f;              // Reduced for stability
+const float GRAVITY = 200.0f;              // Realistic gravity (scaled for timestep)
 const float RESTITUTION = 0.6f;          // Reduced for less bouncing
 const float BALL_RESTITUTION = 0.7f;
 
@@ -53,7 +53,7 @@ const float CELL_HEIGHT = WORLD_HEIGHT / NUM_ROWS;
 bool mousePressed = false;
 glm::vec2 mouseWorldPos(0.0f);
 float ballSpawnTimer = 0.0f;
-const float BALL_SPAWN_RATE = 0.05f; // Slower spawn rate for stability
+const float BALL_SPAWN_RATE = 0.025f; // Slower spawn rate for stability
 
 // Debug selection
 int selectedBallIndex = -1;
@@ -80,12 +80,19 @@ struct Ball {
     float mass;
     bool isSleeping = false;
     float sleepTimer = 0.0f;
+    bool isTrapped = false;  // Track if ball is surrounded
+    bool canReceiveGravity = true;  // Track if ball has space below to fall
+    
+    // Long-term position tracking
+    glm::vec2 positionSnapshot;  // Position 10 frames ago
+    int snapshotCounter = 0;     // Frame counter for snapshots
     
     int gridRow = -1;
     int gridCol = -1;
 
     Ball() : position(0.0f), previous_position(0.0f), acceleration(0.0f), 
-             color(1.0f), radius(0.1f), mass(1.0f) {}
+             color(1.0f), radius(0.1f), mass(1.0f), isTrapped(false),
+             positionSnapshot(0.0f), snapshotCounter(0), canReceiveGravity(true) {}
 };
 
 // Convert screen coordinates to world coordinates
@@ -135,6 +142,8 @@ Ball createBall(glm::vec2 position) {
     b.acceleration = glm::vec2(0.0f);
     b.isSleeping = false;
     b.sleepTimer = 0.0f;
+    b.positionSnapshot = b.position;  // Initialize snapshot
+    b.snapshotCounter = 0;
 
     return b;
 }
@@ -182,13 +191,13 @@ void resolveBallCollision(Ball& a, Ball& b) {
     a.position += rawSeparation * a_ratio;
     b.position -= rawSeparation * b_ratio;
 
-    // Wake conservatively: only wake if overlap was significant
+    // Wake conservatively: only wake if overlap was significant AND not trapped
     const float WAKE_OVERLAP = 0.01f;
-    if (a.isSleeping && overlap > WAKE_OVERLAP) {
+    if (a.isSleeping && overlap > WAKE_OVERLAP && !a.isTrapped) {
         a.isSleeping = false;
         a.sleepTimer = 0.0f;
     }
-    if (b.isSleeping && overlap > WAKE_OVERLAP) {
+    if (b.isSleeping && overlap > WAKE_OVERLAP && !b.isTrapped) {
         b.isSleeping = false;
         b.sleepTimer = 0.0f;
     }
@@ -229,9 +238,18 @@ void handleWallCollisions(Ball& ball) {
 
 // Improved update with better damping and velocity clamping
 void updateBall(Ball& ball, float deltaTime) {
+    // Don't skip sleeping balls - we need to check if they should wake up
+    // But still skip most processing for sleeping balls
     if (ball.isSleeping) {
-        ball.acceleration = glm::vec2(0.0f);
-        return;
+        // Check if ball should wake up due to external forces
+        // If there's significant acceleration (from collisions or being pushed), wake up
+        if (glm::length(ball.acceleration) > 0.5f) {
+            ball.isSleeping = false;
+            ball.sleepTimer = 0.0f;
+        } else {
+            ball.acceleration = glm::vec2(0.0f);
+            return;
+        }
     }
 
     glm::vec2 velocity = ball.position - ball.previous_position;
@@ -256,12 +274,13 @@ void updateBall(Ball& ball, float deltaTime) {
     
     ball.acceleration = glm::vec2(0.0f);
 
-    // Improved sleep detection
+    // Improved sleep detection with wake-up checks
     // Convert to velocity in units/sec before comparing to threshold
     float speedSq = glm::length2(velocity) / (deltaTime * deltaTime);
     if (speedSq < SLEEP_THRESHOLD_SQ) {
         ball.sleepTimer += deltaTime;
-        if (ball.sleepTimer >= SLEEP_TIME) {
+        if (ball.sleepTimer >= SLEEP_TIME && !ball.isTrapped) {
+            // Only sleep if not trapped (trapped balls are handled separately)
             ball.isSleeping = true;
             ball.sleepTimer = SLEEP_TIME;
             // Lock previous_position exactly to current position to avoid tiny drift
@@ -275,15 +294,92 @@ void updateBall(Ball& ball, float deltaTime) {
             }
         }
     } else {
+        // Moving fast enough - wake up if sleeping and reset timer
+        if (ball.isSleeping) {
+            ball.isSleeping = false;
+        }
         ball.sleepTimer = 0.0f;
     }
 }
 
 // Apply forces like gravity
 void applyForces(Ball& ball) {
-    if (!ball.isSleeping) {
+    // Only apply gravity if ball can receive it (has space below)
+    if (!ball.isSleeping && ball.canReceiveGravity) {
+        // Additional check if ball is on ground with low velocity
+        bool isGrounded = (ball.position.y - ball.radius <= WORLD_BOTTOM + 0.01f);
+        
+        if (isGrounded) {
+            glm::vec2 velocity = ball.position - ball.previous_position;
+            float verticalSpeed = std::abs(velocity.y);
+            
+            // If grounded and moving slowly vertically, don't apply gravity
+            if (verticalSpeed < 0.1f) {
+                return;  // Skip gravity to prevent micro-bouncing
+            }
+        }
+        
         ball.acceleration.y -= GRAVITY;
     }
+}
+
+// Check if a ball is trapped (surrounded in all directions)
+bool checkIfTrapped(Ball& ball, const std::vector<Ball>& allBalls) {
+    // Only check every 15 frames to reduce overhead
+    static std::unordered_map<Ball*, int> checkCounters;
+    checkCounters[&ball]++;
+    if (checkCounters[&ball] % 15 != 0) {
+        return ball.isTrapped; // Return previous state
+    }
+    
+    // Check 8 directions around the ball
+    const int NUM_DIRECTIONS = 8;
+    const float CHECK_DISTANCE = ball.radius * 2.5f;  // How far to check for blocking balls
+    
+    // Direction vectors for 8 directions (N, NE, E, SE, S, SW, W, NW)
+    glm::vec2 directions[NUM_DIRECTIONS] = {
+        glm::vec2(0, 1),    // North
+        glm::vec2(0.707f, 0.707f),   // NE
+        glm::vec2(1, 0),    // East
+        glm::vec2(0.707f, -0.707f),  // SE
+        glm::vec2(0, -1),   // South
+        glm::vec2(-0.707f, -0.707f), // SW
+        glm::vec2(-1, 0),   // West
+        glm::vec2(-0.707f, 0.707f)   // NW
+    };
+    
+    bool blocked[NUM_DIRECTIONS] = {false};
+    
+    // Check each direction for blocking balls
+    for (const auto& other : allBalls) {
+        if (&other == &ball) continue;  // Skip self
+        
+        glm::vec2 delta = other.position - ball.position;
+        float dist = glm::length(delta);
+        
+        // Skip if too far away
+        if (dist > CHECK_DISTANCE) continue;
+        
+        // Check if this ball blocks any direction
+        glm::vec2 dir = glm::normalize(delta);
+        
+        for (int i = 0; i < NUM_DIRECTIONS; i++) {
+            float dot = glm::dot(dir, directions[i]);
+            // If the other ball is roughly in this direction and close enough
+            if (dot > 0.7f && dist < (ball.radius + other.radius) * 1.5f) {
+                blocked[i] = true;
+            }
+        }
+    }
+    
+    // Count how many directions are blocked
+    int blockedCount = 0;
+    for (int i = 0; i < NUM_DIRECTIONS; i++) {
+        if (blocked[i]) blockedCount++;
+    }
+    
+    // Consider trapped if at least 6 out of 8 directions are blocked
+    return blockedCount >= 6;
 }
 
 // Optimized grid population
@@ -313,7 +409,7 @@ void populateGrid(std::vector<Ball>& balls) {
 
 // Multiple solver iterations with decreasing strength
 void handleCollisions() {
-    const int SOLVER_ITERATIONS = 8; // fewer iterations to reduce over-correction
+    const int SOLVER_ITERATIONS = 20; // fewer iterations to reduce over-correction
 
     // Temporary per-ball position deltas to accumulate corrections
     std::vector<glm::vec2> positionDeltas;
@@ -552,6 +648,78 @@ int main()
             while (accumulator >= fixedDeltaTime) {
                 // Apply forces and update positions
                 for (auto& ball : allBalls) {
+                    // Update long-term position tracking for ALL balls
+                    ball.snapshotCounter++;
+                    if (ball.snapshotCounter >= 10) {  // Every 10 frames
+                        // Check if ball has barely moved in the last 10 frames
+                        float distanceMoved = glm::length(ball.position - ball.positionSnapshot);
+                        if (distanceMoved < 0.01f) {  // Less than 0.01 units in 10 frames
+                            // Ball is stuck - force it to sleep
+                            if (!ball.isSleeping) {
+                                ball.isSleeping = true;
+                                ball.previous_position = ball.position;
+                            }
+                        } else if (distanceMoved > 0.05f && ball.isSleeping) {
+                            // Ball has moved significantly - wake it up if it was stuck
+                            ball.isSleeping = false;
+                            ball.sleepTimer = 0.0f;
+                        }
+                        
+                        // Take new snapshot
+                        ball.positionSnapshot = ball.position;
+                        ball.snapshotCounter = 0;
+                    }
+                    
+                    // Check if ball is trapped and update its state
+                    bool wasTrapped = ball.isTrapped;
+                    ball.isTrapped = checkIfTrapped(ball, allBalls);
+                    
+                    // If trapped, force it to sleep
+                    if (ball.isTrapped && !ball.isSleeping) {
+                        ball.isSleeping = true;
+                        ball.previous_position = ball.position;  // Stop movement
+                    }
+                    
+                    // If no longer trapped, wake it up
+                    if (!ball.isTrapped && wasTrapped && ball.isSleeping) {
+                        ball.isSleeping = false;
+                        ball.sleepTimer = 0.0f;
+                        // Give it a small downward velocity to start falling
+                        ball.previous_position = ball.position + glm::vec2(0.0f, 0.01f);
+                    }
+                    
+                    // Check if ball has space below (for gravity determination)
+                    bool hasSpaceBelow = true;
+                    
+                    // First check if on ground
+                    if (ball.position.y - ball.radius <= WORLD_BOTTOM + 0.1f) {
+                        hasSpaceBelow = false;  // On or near ground
+                    } else {
+                        // Check for supporting balls below
+                        float checkDistance = ball.radius * 2.2f;
+                        for (const auto& other : allBalls) {
+                            if (&other == &ball) continue;
+                            
+                            glm::vec2 delta = other.position - ball.position;
+                            float dist = glm::length(delta);
+                            
+                            // Check if other ball is directly below and close enough to block
+                            if (dist < checkDistance && delta.y < 0) {  // Other is below
+                                float verticalDist = std::abs(delta.y);
+                                float horizontalDist = std::abs(delta.x);
+                                
+                                // Check if it's directly below (blocking downward movement)
+                                if (verticalDist < (ball.radius + other.radius) * 1.1f &&
+                                    horizontalDist < (ball.radius + other.radius) * 0.8f) {
+                                    hasSpaceBelow = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    ball.canReceiveGravity = hasSpaceBelow;
+                    
                     applyForces(ball);
                     updateBall(ball, fixedDeltaTime);
                     handleWallCollisions(ball);
