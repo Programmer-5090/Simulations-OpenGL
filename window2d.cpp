@@ -25,13 +25,13 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // Physics constants
-const float GRAVITY = 150.0f;
-const float DAMPING = 0.999f;
-const float RESTITUTION = 0.7f;
+const float GRAVITY = 180.0f;
+const float DAMPING = 0.998f;
+const float RESTITUTION = 0.5f;
 
 // Sleep parameters
-const float SLEEP_THRESHOLD_SQ = 0.001f;
-const float SLEEP_TIME = 0.1f;
+const float SLEEP_THRESHOLD_SQ = 1e-3f;
+const float SLEEP_TIME = 0.3f;
 
 // World boundaries
 const float WORLD_LEFT = -10.0f;
@@ -51,7 +51,7 @@ const float CELL_SIZE_Y = WORLD_HEIGHT / GRID_HEIGHT;
 bool mousePressed = false;
 glm::vec2 mouseWorldPos(0.0f);
 float ballSpawnTimer = 0.0f;
-const float BALL_SPAWN_RATE = 0.03f;
+const float BALL_SPAWN_RATE = 0.01f;
 
 // Debug
 int selectedBallIndex = -1;
@@ -63,7 +63,7 @@ struct Ball;
 
 // Optimized collision cell with fixed capacity
 struct CollisionCell {
-    static constexpr uint8_t CELL_CAPACITY = 8;
+    static constexpr uint8_t CELL_CAPACITY = 32;
     uint8_t objects_count = 0;
     uint32_t objects[CELL_CAPACITY];
     
@@ -205,102 +205,74 @@ inline bool checkCollision(const Ball& a, const Ball& b) {
     return distSq < (radiusSum * radiusSum);
 }
 
-// Optimized collision resolution
+// Optimized collision resolution, inspired by physics.hpp
 void resolveCollision(Ball& a, Ball& b) {
     glm::vec2 delta = a.position - b.position;
     float distSq = glm::dot(delta, delta);
     float radiusSum = a.radius + b.radius;
-    float radiusSumSq = radiusSum * radiusSum;
     
-    if (distSq >= radiusSumSq || distSq < 1e-6f) return;
-    
-    float dist = std::sqrt(distSq);
-    float overlap = radiusSum - dist;
-    
-    // Skip micro-penetrations
-    if (overlap < 0.001f) return;
-    
-    glm::vec2 normal = delta / dist;
-    
-    // Mass-based separation
-    float totalMass = a.mass + b.mass;
-    float aRatio = b.mass / totalMass;
-    float bRatio = a.mass / totalMass;
-    
-    // Constrained correction
-    const float correctionPercent = 0.75f;
-    const float maxCorrection = 0.5f;
-    
-    glm::vec2 correction = normal * (overlap * correctionPercent);
-    if (glm::length(correction) > maxCorrection) {
-        correction = glm::normalize(correction) * maxCorrection;
-    }
-    
-    a.position += correction * aRatio;
-    b.position -= correction * bRatio;
-    
-    // Wake up sleeping balls on significant collision
-    if (overlap > 0.01f) {
-        if (a.isSleeping) {
-            a.isSleeping = false;
-            a.sleepTimer = 0.0f;
-        }
-        if (b.isSleeping) {
-            b.isSleeping = false;
-            b.sleepTimer = 0.0f;
+    // Check for collision
+    if (distSq < radiusSum * radiusSum && distSq > 1e-9f) {
+        float dist = std::sqrt(distSq);
+        glm::vec2 normal = delta / dist;
+        
+        // Calculate overlap and correction vector
+        float overlap = radiusSum - dist;
+        glm::vec2 correction = normal * (overlap * 0.5f); // Move each ball by half the overlap
+
+        // Apply positional correction
+        a.position += correction;
+        b.position -= correction;
+
+        // Wake sleepers only on meaningful hits
+        if (overlap > 0.01f) {
+            a.isSleeping = false; a.sleepTimer = 0.0f;
+            b.isSleeping = false; b.sleepTimer = 0.0f;
         }
     }
 }
 
-// ADD THIS NEW FUNCTION
+
 bool isTrapped(uint32_t ballIndex, const std::vector<Ball>& allBalls, const CollisionGrid& grid) {
     const Ball& ball = allBalls[ballIndex];
 
-    // Define 8 directions to check for neighbors
-    static const std::array<glm::vec2, 8> directions = {{
-        {0, 1}, {0.707f, 0.707f}, {1, 0}, {0.707f, -0.707f},
-        {0, -1}, {-0.707f, -0.707f}, {-1, 0}, {-0.707f, 0.707f}
+    static const std::array<glm::vec2, 8> dirs = {{
+        {1,0}, {-1,0}, {0,1}, {0,-1},
+        {0.707f,0.707f}, {-0.707f,0.707f},
+        {0.707f,-0.707f}, {-0.707f,-0.707f}
     }};
+    std::array<bool,8> blocked{};
 
-    std::array<bool, 8> blockedDirections{}; // Initializes all to false
-    const float checkRadius = ball.radius * 2.5f; // How far to look for blockers
+    float checkR = ball.radius * 2.5f;
 
-    // Check the 3x3 grid of cells around the ball
-    for (int32_t y = ball.gridY - 1; y <= ball.gridY + 1; ++y) {
-        for (int32_t x = ball.gridX - 1; x <= ball.gridX + 1; ++x) {
-            if (!grid.isValidCell(x, y)) continue;
-
-            const CollisionCell& cell = grid.cells[y * grid.width + x];
-            for (uint8_t i = 0; i < cell.objects_count; ++i) {
+    for (int y = ball.gridY-1; y <= ball.gridY+1; ++y) {
+        for (int x = ball.gridX-1; x <= ball.gridX+1; ++x) {
+            if (!grid.isValidCell(x,y)) continue;
+            const CollisionCell& cell = grid.cells[y*grid.width + x];
+            for (int i=0;i<cell.objects_count;i++) {
                 uint32_t otherIndex = cell.objects[i];
-                if (otherIndex == ballIndex) continue; // Skip self
+                if (otherIndex == ballIndex) continue;
+                const Ball& other = allBalls[otherIndex];
 
-                const Ball& otherBall = allBalls[otherIndex];
-                glm::vec2 delta = otherBall.position - ball.position;
-                
-                if (glm::length2(delta) > (checkRadius * checkRadius)) continue;
+                glm::vec2 delta = other.position - ball.position;
+                if (glm::length2(delta) > checkR*checkR) continue;
 
-                glm::vec2 dir = glm::normalize(delta);
-
-                // Check which of the 8 directions this neighbor blocks
-                for (size_t j = 0; j < directions.size(); ++j) {
-                    if (glm::dot(dir, directions[j]) > 0.75f) { // 0.75 is a good threshold
-                        blockedDirections[j] = true;
+                glm::vec2 d = glm::normalize(delta);
+                for (size_t j=0;j<dirs.size();j++) {
+                    if (glm::dot(d, dirs[j]) > 0.75f) {
+                        blocked[j] = true;
                     }
                 }
             }
         }
     }
 
-    // Count how many directions are blocked
-    int blockedCount = 0;
-    for (bool blocked : blockedDirections) {
-        if (blocked) blockedCount++;
-    }
-
-    // If nearly all directions are blocked, the ball is trapped.
-    return blockedCount >= 6;
+    int count=0;
+    for (bool b: blocked) if (b) count++;
+    return count >= 6; // "almost all" directions blocked
 }
+
+
 
 // Wall collision handling
 void handleWallCollisions(Ball& ball) {
@@ -323,19 +295,33 @@ void handleWallCollisions(Ball& ball) {
     }
     
     if (collided) {
-        if (ball.isSleeping) {
-            ball.isSleeping = false;
-            ball.sleepTimer = 0.0f;
-        }
-        
-        // Apply restitution
-        glm::vec2 velocity = ball.position - ball.previous_position;
-        ball.previous_position = ball.position - velocity * RESTITUTION;
+        if (ball.isSleeping) { ball.isSleeping = false; ball.sleepTimer = 0.0f; }
+
+        glm::vec2 v = ball.position - ball.previous_position;
+
+        // pick wall normal
+        glm::vec2 n(0.0f);
+        if (ball.position.x - ball.radius <= WORLD_LEFT)   n = { 1.0f, 0.0f};
+        if (ball.position.x + ball.radius >= WORLD_RIGHT)  n = {-1.0f, 0.0f};
+        if (ball.position.y - ball.radius <= WORLD_BOTTOM) n = { 0.0f, 1.0f};
+        if (ball.position.y + ball.radius >= WORLD_TOP)    n = { 0.0f,-1.0f};
+
+        // split into normal/tangent
+        float vn = glm::dot(v, n);
+        glm::vec2 vN = vn * n;
+        glm::vec2 vT = v - vN;
+
+        const float MU_WALL = 0.6f;            // wall friction
+        vN *= RESTITUTION;                      // bounce
+        vT *= (1.0f - MU_WALL);                 // kill side slip
+
+        ball.previous_position = ball.position - (vN + vT);
     }
+
 }
 
 // Verlet integration with improved stability
-void updateBall(Ball& ball, uint32_t ballIndex, float dt) {
+void updateBall(Ball& ball, uint8_t ballIndex, float dt) {
     if (ball.isSleeping) {
         // Check for external forces that should wake the ball
         if (glm::length(ball.acceleration) > 1.0f) {
@@ -367,17 +353,17 @@ void updateBall(Ball& ball, uint32_t ballIndex, float dt) {
     ball.acceleration = glm::vec2(0.0f);
     
     // Sleep detection
-    float speedSq = glm::length2(velocity) / (dt * dt);
+    float speedSq = glm::length2(velocity) / dt;
     if (speedSq < SLEEP_THRESHOLD_SQ) {
         ball.sleepTimer += dt;
         if (ball.sleepTimer >= SLEEP_TIME) {
             ball.isSleeping = true;
             ball.previous_position = ball.position;
         }
-        // NEW: If moving slowly, check if it's physically trapped
-        else if (ball.sleepTimer > (SLEEP_TIME / 2.0f) && isTrapped(ballIndex, allBalls, grid)) {
+        else if (ball.sleepTimer > (SLEEP_TIME * 0.5f) 
+                && isTrapped(ballIndex, allBalls, grid)) {
             ball.isSleeping = true;
-            // ball.previous_position = ball.position; // Force it to stop
+            ball.previous_position = ball.position;
         }
     } else {
         ball.sleepTimer = 0.0f;
@@ -467,7 +453,7 @@ void processCollisionCell(int32_t cellX, int32_t cellY) {
 
 // Multi-iteration collision solver
 void handleCollisions() {
-    const int SOLVER_ITERATIONS = 16;
+    const int SOLVER_ITERATIONS = 10;
     
     for (int iter = 0; iter < SOLVER_ITERATIONS; ++iter) {
         // Process all cells
@@ -627,10 +613,11 @@ int main() {
         // Fixed timestep physics
         while (accumulator >= fixedDeltaTime && !allBalls.empty()) {
             // Apply forces and update
-            for (size_t i = 0; i < allBalls.size(); ++i) {
-                Ball& ball = allBalls[i];
+            uint32_t ballIndex = 0;
+            for (auto& ball : allBalls) {
                 applyForces(ball);
-                updateBall(ball, static_cast<uint32_t>(i), fixedDeltaTime); // Pass the index
+                updateBall(ball, ballIndex, fixedDeltaTime);
+                ballIndex++;
             }
 
             // Handle collisions
