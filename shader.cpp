@@ -18,7 +18,13 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath)
     {
         // open files
         vShaderFile.open(vertexPath);
+        if (!vShaderFile.is_open()) {
+            std::cout << "ERROR::SHADER::CANNOT_OPEN_VERTEX_FILE: " << vertexPath << std::endl;
+        }
         fShaderFile.open(fragmentPath);
+        if (!fShaderFile.is_open()) {
+            std::cout << "ERROR::SHADER::CANNOT_OPEN_FRAGMENT_FILE: " << fragmentPath << std::endl;
+        }
         std::stringstream vShaderStream, fShaderStream;
         // read file's buffer contents into streams
         vShaderStream << vShaderFile.rdbuf();
@@ -32,7 +38,7 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath)
     }
     catch(std::ifstream::failure e)
     {
-        std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
+    std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ (" << vertexPath << ", " << fragmentPath << ")" << std::endl;
     }
     const char* vShaderCode = vertexCode.c_str();
     const char* fShaderCode = fragmentCode.c_str();
@@ -103,8 +109,17 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath, const char* geo
     {
         // open files
         vShaderFile.open(vertexPath);
+        if (!vShaderFile.is_open()) {
+            std::cout << "ERROR::SHADER::CANNOT_OPEN_VERTEX_FILE: " << vertexPath << std::endl;
+        }
         fShaderFile.open(fragmentPath);
+        if (!fShaderFile.is_open()) {
+            std::cout << "ERROR::SHADER::CANNOT_OPEN_FRAGMENT_FILE: " << fragmentPath << std::endl;
+        }
         gShaderFile.open(geometryPath);
+        if (!gShaderFile.is_open()) {
+            std::cout << "ERROR::SHADER::CANNOT_OPEN_GEOMETRY_FILE: " << geometryPath << std::endl;
+        }
         std::stringstream vShaderStream, fShaderStream, gShaderStream;
         
         // read file's buffer contents into streams

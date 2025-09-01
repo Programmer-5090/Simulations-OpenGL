@@ -1,0 +1,330 @@
+#version 430
+
+// Constants
+const float PI = 3.14159265359;
+const float MAX_FLOAT = 3.402823466e+38;
+const int MAX_NEIGHBORS = 128;
+
+// Kernel indices
+const int ExternalForcesKernel = 0;
+const int UpdateSpatialHashKernel = 1;
+const int CalculateDensitiesKernel = 2;
+const int CalculatePressureForcesKernel = 3;
+const int CalculateViscosityKernel = 4;
+const int UpdatePositionsKernel = 5;
+
+// Work group size
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Particle structure
+struct Particle {
+    vec2 position;
+    vec2 velocity;
+    vec2 predictedPosition;
+    float density;
+    float nearDensity;
+    float pressure;
+    float nearPressure;
+};
+
+// Spatial hashing structure  
+struct SpatialLookup {
+    uint particleIndex;
+    uint hash;
+    uint cellKey;
+};
+
+// Buffers
+layout(std430, binding = 0) restrict buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 1) restrict buffer SpatialLookupBuffer {
+    SpatialLookup spatialLookup[];
+};
+
+layout(std430, binding = 2) restrict buffer StartIndicesBuffer {
+    uint startIndices[];
+};
+
+// Uniforms
+uniform int numParticles;
+uniform float deltaTime;
+uniform float gravity;
+uniform float collisionDamping;
+uniform float smoothingRadius;
+uniform float targetDensity;
+uniform float pressureMultiplier;
+uniform float nearPressureMultiplier;
+uniform float viscosityStrength;
+
+uniform float boundaryForceMultiplier;
+uniform float boundaryForceDistance;
+
+uniform vec2 boundsSize;
+uniform vec2 obstacleSize;
+uniform vec2 obstacleCenter;
+
+// Interaction uniforms
+uniform float interactionRadius;
+uniform float interactionStrength;
+uniform vec2 mousePosition;
+uniform bool leftMousePressed;
+uniform bool rightMousePressed;
+
+// Precomputed kernel factors
+uniform float poly6Factor;
+uniform float spikyPow2Factor;
+uniform float spikyPow3Factor;
+uniform float spikyPow2DerivativeFactor;
+uniform float spikyPow3DerivativeFactor;
+
+// Current kernel being executed
+uniform int currentKernel;
+
+// Hash function - improved to reduce collisions
+uint HashCell(ivec2 cell) {
+    uint a = uint(cell.x * 15823);
+    uint b = uint(cell.y * 9737333);
+    return (a + b) % uint(numParticles);
+}
+
+ivec2 GetCell(vec2 position) {
+    return ivec2(floor(position / smoothingRadius));
+}
+
+uint GetKeyFromHash(uint hash) {
+    return hash;
+}
+
+// SPH Kernel functions
+float SmoothingKernelPoly6(float dst, float radius) {
+    if (dst < radius) {
+        float v = max(0.0, radius * radius - dst * dst);
+        return v * v * v * poly6Factor;
+    }
+    return 0.0;
+}
+
+float SpikyKernelPow2(float dst, float radius) {
+    if (dst < radius) {
+        float v = max(0.0, radius - dst);
+        return v * v * spikyPow2Factor;
+    }
+    return 0.0;
+}
+
+float SpikyKernelPow3(float dst, float radius) {
+    if (dst < radius) {
+        float v = max(0.0, radius - dst);
+        return v * v * v * spikyPow3Factor;
+    }
+    return 0.0;
+}
+
+float DerivativeSpikyPow2(float dst, float radius) {
+    if (dst <= radius && dst > 0.0) {
+        float v = max(0.0, radius - dst);
+        return -v * spikyPow2DerivativeFactor;
+    }
+    return 0.0;
+}
+
+float DerivativeSpikyPow3(float dst, float radius) {
+    if (dst <= radius && dst > 0.0) {
+        float v = max(0.0, radius - dst);
+        return -v * v * spikyPow3DerivativeFactor;
+    }
+    return 0.0;
+}
+
+vec2 CalculateExternalForces(vec2 position, vec2 velocity) {
+    vec2 gravityAccel = vec2(0.0, gravity);
+    
+    // Mouse interaction
+    if (leftMousePressed || rightMousePressed) {
+        vec2 inputOffset = mousePosition - position;
+        float sqrDist = dot(inputOffset, inputOffset);
+        
+        if (sqrDist < interactionRadius * interactionRadius) {
+            float dst = sqrt(sqrDist);
+            float edgeT = dst / interactionRadius;
+            float centerT = 1.0 - edgeT;
+            vec2 dirToCenter = (dst > 0) ? inputOffset / dst : vec2(0, 1);
+            
+            float strength = rightMousePressed ? -interactionStrength : interactionStrength;
+            float gravityWeight = 1.0 - (centerT * clamp(abs(strength) / 10.0, 0.0, 1.0));
+            
+            vec2 accel = gravityAccel * gravityWeight + dirToCenter * centerT * strength;
+            accel -= velocity * centerT;
+            return accel;
+        }
+    }
+    
+    return gravityAccel;
+}
+
+// Unified neighbor processing for all kernels
+void ProcessNeighbors(uint particleIndex, int kernelType, inout vec2 pressureForce, inout vec2 viscosityForce, inout float density, inout float nearDensity, bool includeSelf) {
+    ivec2 originCell = GetCell(particles[particleIndex].predictedPosition);
+    float sqrRadius = smoothingRadius * smoothingRadius;
+
+    for (int offsetX = -1; offsetX <= 1; offsetX++) {
+        for (int offsetY = -1; offsetY <= 1; offsetY++) {
+            uint hash = HashCell(originCell + ivec2(offsetX, offsetY));
+            uint key = hash % uint(numParticles);
+            if (key >= numParticles) continue;
+            uint startIndex = startIndices[key];
+            if (startIndex == numParticles) continue;
+
+            for (uint i = startIndex; i < numParticles; i++) {
+                if (spatialLookup[i].cellKey != key) break;
+                if (spatialLookup[i].hash != hash) continue;
+                uint neighborIndex = spatialLookup[i].particleIndex;
+
+                if (!includeSelf && neighborIndex == particleIndex) continue;
+                vec2 offset = particles[neighborIndex].predictedPosition - particles[particleIndex].predictedPosition;
+                float sqrDst = dot(offset, offset);
+
+                if (sqrDst <= sqrRadius) {
+                    float dst = sqrt(sqrDst);
+                    if (kernelType == CalculateDensitiesKernel) {
+                        density += SpikyKernelPow2(dst, smoothingRadius);
+                        nearDensity += SpikyKernelPow3(dst, smoothingRadius);
+                    } else if (kernelType == CalculatePressureForcesKernel) {
+                        vec2 dirToNeighbor = (dst > 0) ? offset / dst : vec2(0, 1);
+                        float sharedPressure = (particles[particleIndex].pressure + particles[neighborIndex].pressure) * 0.5;
+                        float sharedNearPressure = (particles[particleIndex].nearPressure + particles[neighborIndex].nearPressure) * 0.5;
+                        float neighborDensity = max(particles[neighborIndex].density, 0.01);
+                        float neighborNearDensity = max(particles[neighborIndex].nearDensity, 0.01);
+                        pressureForce += dirToNeighbor * DerivativeSpikyPow2(dst, smoothingRadius) * sharedPressure / neighborDensity;
+                        pressureForce += dirToNeighbor * DerivativeSpikyPow3(dst, smoothingRadius) * sharedNearPressure / neighborNearDensity;
+                    } else if (kernelType == CalculateViscosityKernel) {
+                        viscosityForce += (particles[neighborIndex].velocity - particles[particleIndex].velocity) * SmoothingKernelPoly6(dst, smoothingRadius);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void HandleCollisions(inout Particle particle) {
+    vec2 halfBounds = boundsSize * 0.5;
+    
+    // Boundary collisions with clamping to ensure particles stay within bounds
+    if (abs(particle.position.x) > halfBounds.x) {
+        particle.position.x = clamp(particle.position.x, -halfBounds.x, halfBounds.x);
+        particle.velocity.x *= -collisionDamping;
+    }
+    if (abs(particle.position.y) > halfBounds.y) {
+        particle.position.y = clamp(particle.position.y, -halfBounds.y, halfBounds.y);
+        particle.velocity.y *= -collisionDamping;
+    }
+    
+    // Obstacle collision
+    vec2 obstacleHalfSize = obstacleSize * 0.5;
+    vec2 obstacleOffset = particle.position - obstacleCenter;
+    vec2 obstacleEdgeDist = obstacleHalfSize - abs(obstacleOffset);
+    
+    if (obstacleEdgeDist.x >= 0 && obstacleEdgeDist.y >= 0) {
+        if (obstacleEdgeDist.x < obstacleEdgeDist.y) {
+            particle.position.x = obstacleHalfSize.x * ((obstacleOffset.x > 0) ? 1.0 : -1.0) + obstacleCenter.x;
+            particle.velocity.x *= -collisionDamping;
+        } else {
+            particle.position.y = obstacleHalfSize.y * ((obstacleOffset.y > 0) ? 1.0 : -1.0) + obstacleCenter.y;
+            particle.velocity.y *= -collisionDamping;
+        }
+    }
+}
+
+vec2 CalculateBoundaryForce(vec2 position) {
+    vec2 halfBounds = boundsSize * 0.5;
+    vec2 force = vec2(0.0);
+    
+    // Check distance to each of the four walls
+    float distX_L = position.x - (-halfBounds.x);
+    float distX_R = (halfBounds.x) - position.x;
+    float distY_B = position.y - (-halfBounds.y);
+    float distY_T = (halfBounds.y) - position.y;
+
+    // Apply force if within the boundary distance
+    if (distX_L < boundaryForceDistance) {
+        force.x += (1.0 - distX_L / boundaryForceDistance) * boundaryForceMultiplier;
+    }
+    if (distX_R < boundaryForceDistance) {
+        force.x -= (1.0 - distX_R / boundaryForceDistance) * boundaryForceMultiplier;
+    }
+    if (distY_B < boundaryForceDistance) {
+        force.y += (1.0 - distY_B / boundaryForceDistance) * boundaryForceMultiplier;
+    }
+    if (distY_T < boundaryForceDistance) {
+        force.y -= (1.0 - distY_T / boundaryForceDistance) * boundaryForceMultiplier;
+    }
+
+    return force;
+}
+
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= numParticles) return;
+    
+    if (currentKernel == ExternalForcesKernel) {
+        // External forces and prediction
+        vec2 externalForce = CalculateExternalForces(particles[index].position, particles[index].velocity);
+        particles[index].velocity += externalForce * deltaTime;
+        const float predictionFactor = 1.0 / 120.0;
+        particles[index].predictedPosition = particles[index].position + particles[index].velocity * predictionFactor;
+    }
+    else if (currentKernel == UpdateSpatialHashKernel) {
+        // Update spatial hash
+        startIndices[index] = numParticles;
+        ivec2 cell = GetCell(particles[index].predictedPosition);
+        uint hash = HashCell(cell);
+        uint cellKey = hash % uint(numParticles);
+        spatialLookup[index].particleIndex = index;
+        spatialLookup[index].hash = hash;
+        spatialLookup[index].cellKey = cellKey;
+    }
+    else if (currentKernel == CalculateDensitiesKernel) {
+        // Densities (self included)
+        particles[index].density = 0.0;
+        particles[index].nearDensity = 0.0;
+        vec2 dummyPressure = vec2(0.0);
+        vec2 dummyViscosity = vec2(0.0);
+        ProcessNeighbors(index, CalculateDensitiesKernel, dummyPressure, dummyViscosity, particles[index].density, particles[index].nearDensity, true);
+        particles[index].pressure = (particles[index].density - targetDensity) * pressureMultiplier;
+        particles[index].nearPressure = particles[index].nearDensity * nearPressureMultiplier;
+    }
+    else if (currentKernel == CalculatePressureForcesKernel) {
+        // Pressure forces
+        vec2 pressureForce = vec2(0.0);
+        vec2 dummyViscosity = vec2(0.0);
+        float dummyDensity = 0.0;
+        float dummyNearDensity = 0.0;
+        ProcessNeighbors(index, CalculatePressureForcesKernel, pressureForce, dummyViscosity, dummyDensity, dummyNearDensity, false);
+        float currentDensity = max(particles[index].density, 0.01);
+        vec2 acceleration = pressureForce / currentDensity;
+        particles[index].velocity += acceleration * deltaTime;
+    }
+    else if (currentKernel == CalculateViscosityKernel) {
+        // Viscosity
+        vec2 viscosityForce = vec2(0.0);
+        vec2 dummyPressure = vec2(0.0);
+        float dummyDensity = 0.0;
+        float dummyNearDensity = 0.0;
+        ProcessNeighbors(index, CalculateViscosityKernel, dummyPressure, viscosityForce, dummyDensity, dummyNearDensity, false);
+        particles[index].velocity += viscosityForce * viscosityStrength * deltaTime;
+    }
+    else if (currentKernel == UpdatePositionsKernel) {
+        // Update positions
+        vec2 newPosition = particles[index].position + particles[index].velocity * deltaTime;
+        // Validate position
+        if (isnan(newPosition.x) || isnan(newPosition.y) || isinf(newPosition.x) || isinf(newPosition.y)) {
+            newPosition = vec2(0.0, 0.0);
+            particles[index].velocity = vec2(0.0, 0.0);
+        }
+        particles[index].position = newPosition;
+        HandleCollisions(particles[index]);
+    }
+}

@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <vector>
-#include "glad/glad/glad.h"
+#include "glad/glad.h"
 #include "glm/glm/glm.hpp"
 #include "shader.h"
 
@@ -28,6 +28,10 @@ class Mesh {
 
         Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
         void Draw(Shader &shader);
+        
+        // Getters for instanced rendering
+        unsigned int getVAO() const { return VAO; }
+        unsigned int getIndexCount() const { return static_cast<unsigned int>(indices.size()); }
 
     private:
         // render data
