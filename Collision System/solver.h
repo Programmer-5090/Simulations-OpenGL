@@ -23,17 +23,27 @@ private:
     CollisionGrid grid;
     std::vector<Particle> particles;
     Threader threader;
-    float iterations = 12;
+    int iterations = 12; // substeps per frame
     float UPS = 1.0f / 480.0f;
     float DAMPENING = 0.9f;
+    mutable float lastPhysicsTime = 0.0f; // Time spent in last update call
+    
+    // Object pooling for better memory management
+    std::vector<Particle> particlePool;
+    std::vector<bool> activeParticles;
+    size_t activeCount = 0;
 
 public:
     PhysicsSolver();
     ~PhysicsSolver();
 
-    Particle createBall(glm::vec2 position);
+    Particle createBall(glm::vec2 position, float dt);
+    Particle createBallWithVelocity(glm::vec2 position, glm::vec2 velocity, float dt);
     void update(float deltaTime);
+    float getLastPhysicsTime() const { return lastPhysicsTime; } // Get time spent in last update
     void addParticle(const Particle& particle);
+    void removeOffscreenParticles(); // Clean up particles that left the world
+    void compactParticleArray(); // Remove gaps in particle array
     void updateParticleGrid();
     void wallCollisions();
     bool collision(const Particle& a, const Particle& b);

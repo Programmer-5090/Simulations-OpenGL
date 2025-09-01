@@ -115,6 +115,18 @@ target_link_libraries(CollisionSystem Threads::Threads)
 # Create GPU fluid simulation executable
 add_executable(GPUFluidSim3D SPHFluid/3D/window3D.cpp shader.cpp mesh.cpp ${GEOMETRY_SOURCES} ${GPU_SOURCES} ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp ${GLAD_SOURCES})
 
+# Create GPU fluid simulation 2D executable
+add_executable(GPUFluidSim2D 
+    SPHFluid/2D/gpuFluidWindow.cpp
+    SPHFluid/2D/GPUFluidSimulation.cpp
+    SPHFluid/2D/GPUParticleDisplay.cpp
+    shader.cpp
+    mesh.cpp
+    ${GEOMETRY_SOURCES}
+    ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp
+    ${GLAD_SOURCES}
+)
+
 # Platform-specific target properties (must be after target creation)
 if(WIN32 AND MSVC)
     # Force MSVC to use its own headers by setting system include directories
@@ -146,6 +158,11 @@ if(WIN32 AND MSVC)
         NOMINMAX
         _CRT_SECURE_NO_WARNINGS
     )
+    target_compile_definitions(GPUFluidSim2D PRIVATE 
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+    )
     
     target_compile_options(${PROJECT_NAME} PRIVATE
         /external:W0
@@ -170,6 +187,11 @@ if(WIN32 AND MSVC)
         /external:anglebrackets
         /external:templates-
     )
+    target_compile_options(GPUFluidSim2D PRIVATE
+        /external:W0
+        /external:anglebrackets
+        /external:templates-
+    )
 endif()
 
 # Link libraries
@@ -189,6 +211,11 @@ target_link_libraries(CollisionSystem
 )
 
 target_link_libraries(GPUFluidSim3D 
+    OpenGL::GL
+    glfw
+)
+
+target_link_libraries(GPUFluidSim2D 
     OpenGL::GL
     glfw
 )
@@ -264,6 +291,10 @@ set_target_properties(CollisionSystem PROPERTIES
 )
 
 set_target_properties(GPUFluidSim3D PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
+)
+
+set_target_properties(GPUFluidSim2D PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
 )
 

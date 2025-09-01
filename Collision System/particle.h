@@ -1,36 +1,23 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <algorithm> // For std::max/min
 #include "constants.h"
 
 class Particle {
-
 public:
     glm::vec2 position;
     glm::vec2 previous_position;
     glm::vec2 acceleration;
     glm::vec3 color;
     float radius;
-    float mass;
     int gridX;
     int gridY;
     int id;
+
     Particle() 
         : position(0.0f), previous_position(0.0f), acceleration(0.0f), 
-          color(1.0f), radius(0.1f), mass(1.0f), gridX(0), gridY(0), id(0) {}
-
-    void setPosition(glm::vec2 pos) {
-        position = pos;
-        previous_position = pos;
-    }
-
-    glm::vec2 getVelocity(float dt) const {
-        return (position - previous_position) / dt;
-    }
-
-    float getSpeed(float dt) const {
-        return glm::length(getVelocity(dt));
-    }
+          color(1.0f), radius(0.1f), gridX(0), gridY(0), id(0) {}
 
     void accelerate(glm::vec2 accel) {
         acceleration += accel;
@@ -44,21 +31,19 @@ public:
         previous_position -= vel * dt;
     }
 
+    // This function should only be called once per frame/substep
     void update(float dt) {
-        glm::vec2 temp = position;
-        position = position + (position - previous_position) + acceleration * (dt * dt);
-        previous_position = temp;
+        // Verlet integration
+        glm::vec2 velocity = position - previous_position;
+        glm::vec2 temp_pos = position;
+        position = position + velocity + acceleration * (dt * dt);
+        previous_position = temp_pos;
         acceleration = glm::vec2(0.0f);
+    }
 
-        // Convert world coordinates to grid coordinates correctly
-        float relativeX = position.x - WORLD_LEFT;
-        float relativeY = position.y - WORLD_BOTTOM;
-        
-        gridX = static_cast<int>(relativeX / CELL_SIZE_X);
-        gridY = static_cast<int>(relativeY / CELL_SIZE_Y);
-        
-        // Clamp to valid range
-        gridX = std::max(0, std::min(gridX, GRID_WIDTH - 1));
-        gridY = std::max(0, std::min(gridY, GRID_HEIGHT - 1));
+    // Separate function to update grid position when needed
+    void updateGridPosition() {
+        gridX = static_cast<int>((position.x - WORLD_LEFT) / CELL_SIZE);
+        gridY = static_cast<int>((position.y - WORLD_BOTTOM) / CELL_SIZE);
     }
 };

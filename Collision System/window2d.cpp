@@ -14,42 +14,41 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <iomanip> // For std::fixed, std::setprecision
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
-void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods); // (unused now)
 
-// Mouse interaction
-bool mousePressed = false;
-glm::vec2 mouseWorldPos(0.0f);
-float ballSpawnTimer = 0.0f;
-const float BALL_SPAWN_RATE = 0.01f;
+// Automatic spawning configuration
+float autoSpawnTimer = 0.0f;
+const float AUTO_SPAWN_INTERVAL = 0.05f; // seconds between spawn waves
+const glm::vec2 CONSTANT_VELOCITY = glm::vec2(3.0f, 0.0f); // constant initial velocity for all balls
+const int STREAM_COUNT = 4;            // number of parallel streams
+const float STREAM_SPACING = 0.30f;    // vertical spacing between streams
+const float SPAWN_MARGIN_X = 0.25f;    // offset from WORLD_LEFT
+const float TOP_MARGIN = 0.4f;         // distance below WORLD_TOP for first stream
+bool spawnEnabled = true;                 // can be disabled on slowdown
+const float PERF_CHECK_INTERVAL = 2.0f;   // seconds between performance checks
+const float PHYSICS_TIME_THRESHOLD = 30.0f; // if physics takes >30ms per frame, stop spawning
+const float MAX_PARTICLE_DENSITY = 1.0f; // max particles per world unit area (stops spawning when full)
+float perfTimer = 0.0f;                   // accumulates time for performance window
+float maxPhysicsTimeInWindow = 0.0f;      // peak physics time in current window
+
+// Timing
+const float fixedDeltaTime = 1.0f / 120.0f;
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+float accumulator = 0.0f;
 
 // Global physics solver
 PhysicsSolver solver;
 
-// Mouse callbacks
+// Mouse callback retained but disabled (no spawning)
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        if (action == GLFW_PRESS) {
-            mousePressed = true;
-            ballSpawnTimer = 0.0f;
-            
-            double xpos, ypos;
-            glfwGetCursorPos(window, &xpos, &ypos);
-            mouseWorldPos = screenToWorld(xpos, ypos);
-            
-            Particle newParticle = solver.createBall(mouseWorldPos);
-            solver.addParticle(newParticle);
-            
-            std::cout << "Ball stream started" << std::endl;
-        } else if (action == GLFW_RELEASE) {
-            mousePressed = false;
-            std::cout << "Ball stream stopped" << std::endl;
-        }
-    } else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-        std::cout << "Right click - clear all particles" << std::endl;
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         solver.clearParticles();
+        std::cout << "Particles cleared" << std::endl;
     }
 }
 
@@ -77,6 +76,7 @@ int main() {
     
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    // Mouse spawning disabled – only right-click clear retained
     glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     // GLAD initialization
@@ -117,72 +117,71 @@ int main() {
     std::cout << "Adding initial test particles..." << std::endl;
     for (int i = 0; i < 10; ++i) {
         glm::vec2 testPos(randomFloat(-5.0f, 5.0f), randomFloat(2.0f, 5.0f));
-        Particle testParticle = solver.createBall(testPos);
+        Particle testParticle = solver.createBall(testPos, fixedDeltaTime);
         solver.addParticle(testParticle);
     }
     std::cout << "Initial particles added: " << solver.getParticleCount() << std::endl;
 
-    // Timing
-    const float fixedDeltaTime = 1.0f / 120.0f;
-    float deltaTime = 0.0f;
-    float lastFrame = 0.0f;
-    float accumulator = 0.0f;
+    
     
     // Performance monitoring
     int frameCount = 0;
     float fpsTimer = 0.0f;
 
-    std::cout << "Physics engine ready! Hold left mouse to spawn balls, right click to clear." << std::endl;
+    std::cout << "Physics engine ready! Auto-spawning from left edge. Right-click or press C to clear." << std::endl;
+    std::cout << "Spawning stops automatically if physics time exceeds " << PHYSICS_TIME_THRESHOLD << "ms per frame" << std::endl;
+    std::cout << "Or if particle density exceeds " << MAX_PARTICLE_DENSITY << " particles per world unit area" << std::endl;
 
     // Main loop
     std::cout << "Entering main loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
+        // Poll events at the START of the frame so input + callbacks affect this frame's physics step
+        glfwPollEvents();
         processInput(window);
 
-        // Timing
+        // Timing after input
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // Prevent spiral of death
+        // Prevent spiral of death (cap frame delta)
         if (deltaTime > 0.0167f) deltaTime = 0.0167f;
         accumulator += deltaTime;
 
-        // Handle continuous ball spawning
-        if (mousePressed) {
-            ballSpawnTimer += deltaTime;
-            
-            double xpos, ypos;
-            glfwGetCursorPos(window, &xpos, &ypos);
-            mouseWorldPos = screenToWorld(xpos, ypos);
-            
-            while (ballSpawnTimer >= BALL_SPAWN_RATE) {
-                Particle newParticle = solver.createBall(mouseWorldPos);
-                solver.addParticle(newParticle);
-                ballSpawnTimer -= BALL_SPAWN_RATE;
+        // Automatic spawning: four vertically stacked streams near top-left (if enabled)
+        if (spawnEnabled) {
+            autoSpawnTimer += deltaTime;
+            while (autoSpawnTimer >= AUTO_SPAWN_INTERVAL) {
+                float baseY = WORLD_TOP - TOP_MARGIN; // starting y for top stream
+                float x = WORLD_LEFT + SPAWN_MARGIN_X;
+                for (int i = 0; i < STREAM_COUNT; ++i) {
+                    float y = baseY - i * STREAM_SPACING;
+                    if (y - 0.2f < WORLD_BOTTOM) break;
+                    glm::vec2 spawnPos(x, y);
+                    Particle p = solver.createBallWithVelocity(spawnPos, CONSTANT_VELOCITY, fixedDeltaTime);
+                    solver.addParticle(p);
+                }
+                autoSpawnTimer -= AUTO_SPAWN_INTERVAL;
             }
         }
 
-        // Fixed timestep physics - SAFE VERSION
+        // Fixed timestep physics - track physics performance
         try {
             while (accumulator >= fixedDeltaTime) {
-                static bool firstUpdate = true;
-                if (firstUpdate) {
-                    std::cout << "About to call solver.update() for first time..." << std::endl;
-                    firstUpdate = false;
-                }
                 solver.update(fixedDeltaTime);
                 accumulator -= fixedDeltaTime;
+                
+                // Track peak physics time in this window
+                float physicsTime = solver.getLastPhysicsTime();
+                maxPhysicsTimeInWindow = std::max(maxPhysicsTimeInWindow, physicsTime);
             }
-            accumulator = 0.0f; // Reset to prevent spiral
         } catch (const std::exception& e) {
             std::cerr << "Solver update error: " << e.what() << std::endl;
             break;
         }
 
-        // Performance monitoring
-        frameCount++;
-        fpsTimer += deltaTime;
+        // Performance monitoring based on physics timing
+        perfTimer += deltaTime;
         
         // Debug first few frames
         static int debugFrameCount = 0;
@@ -191,14 +190,22 @@ int main() {
             std::cout << "Frame " << debugFrameCount << " - Particles: " << solver.getParticleCount() << std::endl;
         }
         
-        if (fpsTimer >= 2.0f) {
-            std::cout << "FPS: " << static_cast<int>(frameCount / 2.0f) 
-                      << " | Particles: " << solver.getParticleCount() << std::endl;
-            frameCount = 0;
-            fpsTimer = 0.0f;
-        }
-
-        // Rendering
+        if (perfTimer >= PERF_CHECK_INTERVAL) {
+            float worldArea = (WORLD_RIGHT - WORLD_LEFT) * (WORLD_TOP - WORLD_BOTTOM);
+            float currentDensity = solver.getParticleCount() / worldArea;
+            
+            std::cout << "Peak Physics Time: " << maxPhysicsTimeInWindow << "ms"
+                      << " | Particles: " << solver.getParticleCount()
+                      << " | Density: " << std::fixed << std::setprecision(3) << currentDensity
+                      << (spawnEnabled ? " | Spawning ON" : " | Spawning OFF")
+                      << std::endl;
+            if (spawnEnabled && maxPhysicsTimeInWindow > PHYSICS_TIME_THRESHOLD) {
+                spawnEnabled = false;
+                std::cout << "Auto-spawning disabled due to slow physics (" << maxPhysicsTimeInWindow << "ms)" << std::endl;
+            }
+            maxPhysicsTimeInWindow = 0.0f;
+            perfTimer = 0.0f;
+        }        // Rendering
         glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -217,7 +224,7 @@ int main() {
             shader2D.setMat4("projection", projection);
             shader2D.setMat4("view", view);
 
-            // Simple lighting
+            // Optimized: Set lighting once per frame, not per particle
             shader2D.setVec3("lightColor", glm::vec3(1.0f));
             shader2D.setVec3("viewPos", glm::vec3(0.0f, 0.0f, 1.0f));
             shader2D.setVec3("dirLight.direction", glm::vec3(0.0f, 0.0f, -1.0f));
@@ -229,25 +236,45 @@ int main() {
             glBindTexture(GL_TEXTURE_2D, texture);
             shader2D.setInt("texture1", 0);
 
-            // Render particles
+            // Optimized: Batch rendering with frustum culling
+            size_t renderedCount = 0;
             for (const Particle& particle : particles) {
+                // Simple frustum culling - only render particles in view
+                if (particle.position.x + particle.radius < WORLD_LEFT || 
+                    particle.position.x - particle.radius > WORLD_RIGHT ||
+                    particle.position.y + particle.radius < WORLD_BOTTOM || 
+                    particle.position.y - particle.radius > WORLD_TOP) {
+                    continue; // Skip offscreen particles
+                }
+                
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, glm::vec3(particle.position.x, particle.position.y, 0.0f));
                 model = glm::scale(model, glm::vec3(particle.radius));
 
                 shader2D.setMat4("model", model);
 
-                shader2D.setVec3("material.ambient", particle.color * 0.5f);
+                // Optimized: Simpler material setup
+                shader2D.setVec3("material.ambient", particle.color * 0.6f);
                 shader2D.setVec3("material.diffuse", particle.color);
-                shader2D.setVec3("material.specular", glm::vec3(0.1f));
-                shader2D.setFloat("material.shininess", 16.0f);
+                shader2D.setVec3("material.specular", glm::vec3(0.05f)); // Reduced specular
+                shader2D.setFloat("material.shininess", 8.0f); // Reduced shininess
 
                 circleMesh.Draw(shader2D);
+                renderedCount++;
+            }
+            
+            // Debug: Show render stats occasionally
+            static int renderDebugCounter = 0;
+            if (++renderDebugCounter % 120 == 0) { // Every 2 seconds at 60fps
+                float cullingRatio = (float)renderedCount / particles.size();
+                if (cullingRatio < 0.95f) {
+                    std::cout << "Culled " << (particles.size() - renderedCount) 
+                              << " particles (" << (int)((1.0f - cullingRatio) * 100) << "%)" << std::endl;
+                }
             }
         }
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+    glfwSwapBuffers(window);
     }
 
     // Cleanup
