@@ -76,23 +76,23 @@ int main() {
     // Infinite grid shader (same as used in the 2D window)
     Shader infiniteGridShader("shaders/infinite_grid.vs", "shaders/infinite_grid.fs");
 
-    // Simulation settings - tuned to match Unity reference implementation
+    // Simulation settings - tuned for proper 3D fluid behavior
     GPUSimulationSettings settings;
-    settings.gravity = -10.0f;  // Match Unity reference
-    settings.smoothingRadius = 0.2f;  // Match Unity reference
-    settings.targetDensity = 630.0f;  // Much higher like Unity reference settings (typical 500-1000)
-    settings.pressureMultiplier = 288.0f;  // Match Unity reference
-    settings.nearPressureMultiplier = 2.25f;  // Match Unity reference
-    settings.viscosityStrength = 0.001f;  // Match Unity reference
-    settings.boundsSize = glm::vec3(5.0f, 5.0f, 5.0f);  // Reasonable bounds
-    settings.collisionDamping = 0.05f;  // Match Unity reference (much lower!)
-    settings.boundaryForceMultiplier = 8.0f;  
-    settings.boundaryForceDistance = 0.5f;  
-    settings.timeScale = 1.0f;  // Match Unity reference
-    settings.iterationsPerFrame = 3;  // Match Unity reference
+    settings.gravity = -9.81f;  // Standard gravity - less aggressive
+    settings.smoothingRadius = 0.25f;  // Larger smoothing radius for better particle separation
+    settings.targetDensity = 63.0f;  // Higher target density to prevent over-compression
+    settings.pressureMultiplier = 288.0f;  // Reduced pressure to prevent squashing
+    settings.nearPressureMultiplier = 2.25f;  // Lower near pressure for less compression
+    settings.viscosityStrength = 0.001f;  // Slightly higher viscosity for stability
+    settings.boundsSize = glm::vec3(4.0f, 4.0f, 4.0f);  // Smaller bounds for better containment
+    settings.collisionDamping = 0.98f;  // Higher damping for smoother collisions
+    settings.boundaryForceMultiplier = 8.0f;  // Stronger boundary force to prevent escape
+    settings.boundaryForceDistance = 0.5f;  // Larger boundary force distance
+    settings.timeScale = 0.9f;  // Slower time scale for stability
+    settings.iterationsPerFrame = 3;  // Fewer iterations for smoother behavior
 
         // Initialize GPU fluid simulation with 3D parameters
-    const int numParticles = 10000; // Reduced to match Unity reference density
+    const int numParticles = 15000; // Reduced for better visualization and less compression
     GPUFluidSimulation fluidSim(numParticles, settings);
     g_fluidSim = &fluidSim;  // Set global pointer for input handling
     GPUParticleDisplay particleDisplay(&fluidSim, &particleShader);
