@@ -120,7 +120,7 @@ int main() {
     settings.boundaryForceMultiplier = 2.0f; // Disabled explicit boundary force (handled via collisions)
     settings.boundaryForceDistance = 0.0f;
     
-    const int numParticles = 10000; // Number of particles
+    const int numParticles = 50000; // Number of particles
     fluidSim = new GPUFluidSimulation(numParticles, settings);
     particleDisplay = new GPUParticleDisplay(fluidSim, &particleShader);
     

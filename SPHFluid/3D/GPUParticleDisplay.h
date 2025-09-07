@@ -5,14 +5,14 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include "Shader.h"
-#include "GPUFluidSimulation3D.h"
+#include "GPUFluidSimulation.h"
 #include "geometry/sphere.h" // Use the sphere class for rendering
 #include "mesh.h"   // For converting parametric geometry to a renderable mesh (VAO/EBO)
 
-class GPUParticleDisplay3D {
+class GPUParticleDisplay {
 public:
-    GPUParticleDisplay3D(GPUFluidSimulation* sim, Shader* shader);
-    ~GPUParticleDisplay3D();
+    GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader);
+    ~GPUParticleDisplay();
 
     void Update(); // This might not be needed if all data is on GPU
     void Render(const glm::mat4& view, const glm::mat4& projection);
@@ -20,6 +20,7 @@ public:
 private:
     void InitializeRenderingResources();
     void CreateGradientTexture();
+    void UpdateInstanceData();
 
     GPUFluidSimulation* simulation;
     Shader* particleShader;

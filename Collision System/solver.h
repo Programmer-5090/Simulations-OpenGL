@@ -23,7 +23,7 @@ private:
     CollisionGrid grid;
     std::vector<Particle> particles;
     Threader threader;
-    int iterations = 12; // substeps per frame
+    int iterations = 8; // substeps per frame
     float UPS = 1.0f / 480.0f;
     float DAMPENING = 0.9f;
     mutable float lastPhysicsTime = 0.0f; // Time spent in last update call
@@ -42,7 +42,6 @@ public:
     void update(float deltaTime);
     float getLastPhysicsTime() const { return lastPhysicsTime; } // Get time spent in last update
     void addParticle(const Particle& particle);
-    void removeOffscreenParticles(); // Clean up particles that left the world
     void compactParticleArray(); // Remove gaps in particle array
     void updateParticleGrid();
     void wallCollisions();
@@ -50,7 +49,7 @@ public:
     void resolveCollision(Particle& a, Particle& b);
     void collideCells(int x1, int y1, int x2, int y2);
     void checkCollisions();
-    void checkCollisionsInSlice(int lcol, int rcol);
+    void checkCollisionsInSlice(int leftCol, int rightCol, int& collisionChecks);
     void updateParticles(float dt);
     void applyGravity();
     

@@ -49,39 +49,19 @@ endif()
 file(GLOB SOURCES "*.cpp")
 file(GLOB GEOMETRY_SOURCES "geometry/*.cpp")  # Add geometry folder sources
 file(GLOB WORLD_SOURCES "SPHFluid/2D/*.cpp")
+file(GLOB WORLD3D_SOURCES "SPHFluid/3D/*.cpp")
 file(GLOB COLLISION_SOURCES "Collision System/*.cpp")  # Add Collision System sources
 # Include GPUSort.cpp in main project sources so both OpenGLProject and GPU targets can link
 list(APPEND SOURCES "${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp")
 set(GLAD_SOURCES "${CMAKE_SOURCE_DIR}/includes/glad/src/glad.c")
 
-# GPU-specific sources
-set(GPU_SOURCES 
-    SPHFluid/3D/GPUFluidSimulation.cpp
-    SPHFluid/3D/GPUParticleDisplay3D.cpp
-    SPHFluid/3D/BoundingBox.cpp
-    SPHFluid/3D/window3D.cpp
-)
 
-# Create main 3D executable
+# Create main executable (basic OpenGL project without fluid simulation)
 list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/Collision System/window2d.cpp")  # Exclude collision system window from main build
 list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/gpuFluidWindow.cpp")  # Exclude accidental top-level gpuFluidWindow to avoid duplicate mains
 
-# Also exclude any SPHFluid gpuFluidWindow files from the main world's sources to avoid duplicate mains
-list(REMOVE_ITEM WORLD_SOURCES "SPHFluid/2D/gpuFluidWindow.cpp")
-list(REMOVE_ITEM WORLD_SOURCES "${CMAKE_SOURCE_DIR}/SPHFluid/2D/gpuFluidWindow.cpp")
-
-# Ensure GPU-specific sources are not part of the main world's source list.
-# WORLD_SOURCES was set to all files under SPHFluid/; remove GPU-only files
-foreach(GPU_FILE ${GPU_SOURCES})
-    list(REMOVE_ITEM WORLD_SOURCES "${CMAKE_SOURCE_DIR}/${GPU_FILE}")
-endforeach()
-
-# Also remove any GPU files that might appear in the top-level SOURCES list
-foreach(GPU_FILE ${GPU_SOURCES})
-    list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/${GPU_FILE}")
-endforeach()
-
-add_executable(${PROJECT_NAME} ${SOURCES} ${GEOMETRY_SOURCES} ${WORLD_SOURCES} ${GLAD_SOURCES})
+# Main project will be basic OpenGL without fluid simulation to avoid conflicts
+add_executable(${PROJECT_NAME} ${SOURCES} ${GEOMETRY_SOURCES} ${GLAD_SOURCES})
 
 # Create separate 2D executable (this target is now empty since window2d.cpp doesn't exist in root)
 # add_executable(OpenGL2D window2d.cpp shader.cpp mesh.cpp ${GEOMETRY_SOURCES} ${GLAD_SOURCES})
@@ -113,7 +93,17 @@ target_link_libraries(CollisionSystem Threads::Threads)
 
 
 # Create GPU fluid simulation executable
-add_executable(GPUFluidSim3D SPHFluid/3D/window3D.cpp shader.cpp mesh.cpp ${GEOMETRY_SOURCES} ${GPU_SOURCES} ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp ${GLAD_SOURCES})
+add_executable(GPUFluidSim3D 
+    SPHFluid/3D/window3D.cpp
+    SPHFluid/3D/GPUFluidSimulation.cpp
+    SPHFluid/3D/GPUParticleDisplay.cpp
+    SPHFluid/3D/BoundingBox.cpp
+    shader.cpp 
+    mesh.cpp 
+    ${GEOMETRY_SOURCES} 
+    ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp 
+    ${GLAD_SOURCES}
+)
 
 # Create GPU fluid simulation 2D executable
 add_executable(GPUFluidSim2D 
@@ -170,12 +160,6 @@ if(WIN32 AND MSVC)
         /external:templates-
     )
     
-    # target_compile_options(OpenGL2D PRIVATE
-    #     /external:W0
-    #     /external:anglebrackets
-    #     /external:templates-
-    # )
-    
     target_compile_options(CollisionSystem PRIVATE
         /external:W0
         /external:anglebrackets
@@ -199,11 +183,6 @@ target_link_libraries(${PROJECT_NAME}
     OpenGL::GL
     glfw
 )
-
-# target_link_libraries(OpenGL2D 
-#     OpenGL::GL
-#     glfw
-# )
 
 target_link_libraries(CollisionSystem 
     OpenGL::GL

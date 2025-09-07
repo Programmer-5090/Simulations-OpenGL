@@ -22,7 +22,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
 // Automatic spawning configuration
 float autoSpawnTimer = 0.0f;
-const float AUTO_SPAWN_INTERVAL = 0.05f; // seconds between spawn waves
+const float AUTO_SPAWN_INTERVAL = 0.0125f; // seconds between spawn waves
 const glm::vec2 CONSTANT_VELOCITY = glm::vec2(3.0f, 0.0f); // constant initial velocity for all balls
 const int STREAM_COUNT = 4;            // number of parallel streams
 const float STREAM_SPACING = 0.30f;    // vertical spacing between streams
@@ -30,7 +30,7 @@ const float SPAWN_MARGIN_X = 0.25f;    // offset from WORLD_LEFT
 const float TOP_MARGIN = 0.4f;         // distance below WORLD_TOP for first stream
 bool spawnEnabled = true;                 // can be disabled on slowdown
 const float PERF_CHECK_INTERVAL = 2.0f;   // seconds between performance checks
-const float PHYSICS_TIME_THRESHOLD = 30.0f; // if physics takes >30ms per frame, stop spawning
+const float PHYSICS_TIME_THRESHOLD = 100.0f; // if physics takes >30ms per frame, stop spawning
 const float MAX_PARTICLE_DENSITY = 1.0f; // max particles per world unit area (stops spawning when full)
 float perfTimer = 0.0f;                   // accumulates time for performance window
 float maxPhysicsTimeInWindow = 0.0f;      // peak physics time in current window
@@ -194,11 +194,11 @@ int main() {
             float worldArea = (WORLD_RIGHT - WORLD_LEFT) * (WORLD_TOP - WORLD_BOTTOM);
             float currentDensity = solver.getParticleCount() / worldArea;
             
-            std::cout << "Peak Physics Time: " << maxPhysicsTimeInWindow << "ms"
-                      << " | Particles: " << solver.getParticleCount()
-                      << " | Density: " << std::fixed << std::setprecision(3) << currentDensity
-                      << (spawnEnabled ? " | Spawning ON" : " | Spawning OFF")
-                      << std::endl;
+            // std::cout << "Peak Physics Time: " << maxPhysicsTimeInWindow << "ms"
+            //           << " | Particles: " << solver.getParticleCount()
+            //           << " | Density: " << std::fixed << std::setprecision(3) << currentDensity
+            //           << (spawnEnabled ? " | Spawning ON" : " | Spawning OFF")
+            //           << std::endl;
             if (spawnEnabled && maxPhysicsTimeInWindow > PHYSICS_TIME_THRESHOLD) {
                 spawnEnabled = false;
                 std::cout << "Auto-spawning disabled due to slow physics (" << maxPhysicsTimeInWindow << "ms)" << std::endl;

@@ -142,8 +142,8 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     glBindTexture(GL_TEXTURE_1D, gradientTexture);
     particleShader->setInt("ColourMap", 0);
 
-    // Set uniforms
-    float particleScale = 0.05f; // 'scale'
+    // Set uniforms - make particle scale proportional to smoothing radius
+    float particleScale = simulation->GetSettings().smoothingRadius * 0.15f; // 15% of smoothing radius for 2D visual appeal
     float velocityMax = 8.0f;    // 'velocityDisplayMax'
     particleShader->setFloat("particleScale", particleScale);
     particleShader->setFloat("velocityMax", velocityMax);

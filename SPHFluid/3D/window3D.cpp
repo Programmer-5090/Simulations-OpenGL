@@ -7,31 +7,34 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "shader.h"
-#include "GPUFluidSimulation3D.h"
-#include "GPUParticleDisplay3D.h"
+#include "GPUFluidSimulation.h"
+#include "GPUParticleDisplay.h"
 #include "BoundingBox.h"
 #include "camera.h"
 #include <iostream>
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void processInput(GLFWwindow* window);
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+static void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+static void processInput(GLFWwindow* window);
+static void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+
+// Global pointer to fluid simulation for input handling
+static GPUFluidSimulation* g_fluidSim = nullptr;
 
 
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
-// Camera
-Camera camera(glm::vec3(0.0f, 5.0f, 25.0f));
-float lastX = SCR_WIDTH / 2.0f;
-float lastY = SCR_HEIGHT / 2.0f;
-bool firstMouse = true;
+// Camera (static to avoid conflicts with other files)
+static Camera camera(glm::vec3(0.0f, 5.0f, 25.0f));
+static float lastX = SCR_WIDTH / 2.0f;
+static float lastY = SCR_HEIGHT / 2.0f;
+static bool firstMouse = true;
 
-// Timing
-float deltaTime = 0.0f;
-float lastFrame = 0.0f;
-bool paused = false;
+// Timing (static to avoid conflicts with other files)
+static float deltaTime = 0.0f;
+static float lastFrame = 0.0f;
+static bool paused = false;
 
 
 int main() {
@@ -73,27 +76,42 @@ int main() {
     // Infinite grid shader (same as used in the 2D window)
     Shader infiniteGridShader("shaders/infinite_grid.vs", "shaders/infinite_grid.fs");
 
-    // Simulation
+    // Simulation settings - tuned to match Unity reference implementation
     GPUSimulationSettings settings;
-    settings.gravity = -9.8f;
-    settings.smoothingRadius = 0.5f;
-    settings.targetDensity = 20.0f;
-    settings.pressureMultiplier = 50.0f;
-    settings.nearPressureMultiplier = 10.0f;
-    settings.viscosityStrength = 0.1f;
-    settings.boundsSize = glm::vec3(12.0f, 15.0f, 12.0f);
-    settings.collisionDamping = 0.5f;
-    settings.timeScale = 1.0f;
-    settings.iterationsPerFrame = 2;
+    settings.gravity = -10.0f;  // Match Unity reference
+    settings.smoothingRadius = 0.2f;  // Match Unity reference
+    settings.targetDensity = 630.0f;  // Much higher like Unity reference settings (typical 500-1000)
+    settings.pressureMultiplier = 288.0f;  // Match Unity reference
+    settings.nearPressureMultiplier = 2.25f;  // Match Unity reference
+    settings.viscosityStrength = 0.001f;  // Match Unity reference
+    settings.boundsSize = glm::vec3(5.0f, 5.0f, 5.0f);  // Reasonable bounds
+    settings.collisionDamping = 0.05f;  // Match Unity reference (much lower!)
+    settings.boundaryForceMultiplier = 8.0f;  
+    settings.boundaryForceDistance = 0.5f;  
+    settings.timeScale = 1.0f;  // Match Unity reference
+    settings.iterationsPerFrame = 3;  // Match Unity reference
 
-    const int numParticles = 8000;
+        // Initialize GPU fluid simulation with 3D parameters
+    const int numParticles = 10000; // Reduced to match Unity reference density
     GPUFluidSimulation fluidSim(numParticles, settings);
-    GPUParticleDisplay3D particleDisplay(&fluidSim, &particleShader);
+    g_fluidSim = &fluidSim;  // Set global pointer for input handling
+    GPUParticleDisplay particleDisplay(&fluidSim, &particleShader);
     BoundingBox boundingBox(settings.boundsSize);
+
+    // Print simulation info
+    std::cout << "3D GPU Fluid Simulation Started!" << std::endl;
+    std::cout << "Particles: " << numParticles << std::endl;
+    std::cout << "Bounds: " << settings.boundsSize.x << " x " << settings.boundsSize.y << " x " << settings.boundsSize.z << std::endl;
+    std::cout << "Controls:" << std::endl;
+    std::cout << "  WASD: Move camera" << std::endl;
+    std::cout << "  Mouse: Look around" << std::endl;
+    std::cout << "  Space: Pause/Resume" << std::endl;
+    std::cout << "  R: Reset simulation" << std::endl;
+    std::cout << "  ESC: Exit" << std::endl;
 
     // Main render loop
     while (!glfwWindowShouldClose(window)) {
-        float currentFrame = glfwGetTime();
+        float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
@@ -101,6 +119,27 @@ int main() {
 
         if (!paused) {
             fluidSim.Update(deltaTime);
+            
+            // Debug: Check if particles are staying in bounds
+            static int frameCounter = 0;
+            frameCounter++;
+            if (frameCounter % 60 == 0) { // Check every 60 frames
+                auto particles = fluidSim.GetParticles();
+                int escapedCount = 0;
+                glm::vec3 halfBounds = settings.boundsSize * 0.5f;
+                
+                for (const auto& particle : particles) {
+                    if (abs(particle.position.x) > halfBounds.x || 
+                        abs(particle.position.y) > halfBounds.y || 
+                        abs(particle.position.z) > halfBounds.z) {
+                        escapedCount++;
+                    }
+                }
+                
+                if (escapedCount > 0) {
+                    std::cout << "WARNING: " << escapedCount << " particles outside bounds!" << std::endl;
+                }
+            }
         }
         particleDisplay.Update();
 
@@ -133,6 +172,7 @@ int main() {
     boxShader.setMat4("projection", projection);
     boxShader.setMat4("view", view);
     boxShader.setMat4("model", glm::mat4(1.0f));
+    boxShader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow color for the box
     boundingBox.Render(view, projection);
 
         // Render Particles
@@ -151,7 +191,7 @@ int main() {
     return 0;
 }
 
-void processInput(GLFWwindow *window)
+static void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
@@ -176,31 +216,43 @@ void processInput(GLFWwindow *window)
     } else {
         spaceKeyPressed = false;
     }
+    
+    // Reset simulation with R key
+    static bool rKeyPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+        if (!rKeyPressed && g_fluidSim) {
+            g_fluidSim->Reset();
+            std::cout << "Simulation reset" << std::endl;
+        }
+        rKeyPressed = true;
+    } else {
+        rKeyPressed = false;
+    }
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+static void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+static void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {
     if (firstMouse)
     {
-        lastX = xpos;
-        lastY = ypos;
+        lastX = static_cast<float>(xpos);
+        lastY = static_cast<float>(ypos);
         firstMouse = false;
     }
 
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; 
+    float xoffset = static_cast<float>(xpos) - lastX;
+    float yoffset = lastY - static_cast<float>(ypos); 
 
-    lastX = xpos;
-    lastY = ypos;
+    lastX = static_cast<float>(xpos);
+    lastY = static_cast<float>(ypos);
 
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
-    camera.ProcessMouseScroll(yoffset);
+    camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }

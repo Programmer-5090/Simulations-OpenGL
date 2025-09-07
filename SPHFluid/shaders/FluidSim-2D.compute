@@ -86,15 +86,11 @@ uniform int currentKernel;
 uint HashCell(ivec2 cell) {
     uint a = uint(cell.x * 15823);
     uint b = uint(cell.y * 9737333);
-    return (a + b) % uint(numParticles);
+    return (a + b);
 }
 
 ivec2 GetCell(vec2 position) {
     return ivec2(floor(position / smoothingRadius));
-}
-
-uint GetKeyFromHash(uint hash) {
-    return hash;
 }
 
 // SPH Kernel functions
@@ -193,6 +189,7 @@ void ProcessNeighbors(uint particleIndex, int kernelType, inout vec2 pressureFor
                         nearDensity += SpikyKernelPow3(dst, smoothingRadius);
                     } else if (kernelType == CalculatePressureForcesKernel) {
                         vec2 dirToNeighbor = (dst > 0) ? offset / dst : vec2(0, 1);
+                        
                         float sharedPressure = (particles[particleIndex].pressure + particles[neighborIndex].pressure) * 0.5;
                         float sharedNearPressure = (particles[particleIndex].nearPressure + particles[neighborIndex].nearPressure) * 0.5;
                         float neighborDensity = max(particles[neighborIndex].density, 0.01);
