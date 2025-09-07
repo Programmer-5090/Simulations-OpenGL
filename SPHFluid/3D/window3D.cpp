@@ -80,7 +80,7 @@ int main() {
     GPUSimulationSettings settings;
     settings.gravity = -9.81f;  // Standard gravity - less aggressive
     settings.smoothingRadius = 0.25f;  // Larger smoothing radius for better particle separation
-    settings.targetDensity = 63.0f;  // Higher target density to prevent over-compression
+    settings.targetDensity = 630.0f;  // Higher target density to prevent over-compression
     settings.pressureMultiplier = 288.0f;  // Reduced pressure to prevent squashing
     settings.nearPressureMultiplier = 2.25f;  // Lower near pressure for less compression
     settings.viscosityStrength = 0.001f;  // Slightly higher viscosity for stability
