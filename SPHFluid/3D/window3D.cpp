@@ -23,7 +23,13 @@ const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
 // Camera (static to avoid conflicts with other files)
-static Camera camera(glm::vec3(0.0f, 5.0f, 25.0f));
+// Point the camera toward the origin for a better initial view of the simulation bounds
+static Camera camera(
+    glm::vec3(-7.0f, 7.0f, 10.0f),          // position
+    glm::vec3(0.0f, 1.0f, 0.0f),            // up
+    -55.0f,                                 // yaw (toward origin from current position)
+    -30.0f                                  // pitch (slightly looking down)
+);
 static float lastX = SCR_WIDTH / 2.0f;
 static float lastY = SCR_HEIGHT / 2.0f;
 static bool firstMouse = true;
@@ -88,6 +94,10 @@ int main() {
     g_fluidSim = &fluidSim;
     GPUParticleDisplay particleDisplay(&fluidSim, &particleShader);
     BoundingBox boundingBox(settings.boundsSize);
+
+    // Raise the simulation visuals along Y without changing physics coordinates
+    const float worldYOffset = 2.0f;
+    particleDisplay.SetWorldOffset(glm::vec3(0.0f, worldYOffset, 0.0f));
 
     std::cout << "3D GPU Fluid Simulation Started!" << std::endl;
     std::cout << "Particles: " << numParticles << std::endl;
@@ -160,7 +170,8 @@ int main() {
     boxShader.use();
     boxShader.setMat4("projection", projection);
     boxShader.setMat4("view", view);
-    boxShader.setMat4("model", glm::mat4(1.0f));
+    glm::mat4 boxModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, worldYOffset, 0.0f));
+    boxShader.setMat4("model", boxModel);
     boxShader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow color for the box
     boundingBox.Render(view, projection);
 

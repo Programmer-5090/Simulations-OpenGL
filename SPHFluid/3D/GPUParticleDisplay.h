@@ -17,6 +17,9 @@ public:
     void Update();
     void Render(const glm::mat4& view, const glm::mat4& projection);
 
+    // Visually offset particle positions without affecting simulation physics
+    void SetWorldOffset(const glm::vec3& offset) { worldOffset = offset; }
+
 private:
     void InitializeRenderingResources();
     void CreateGradientTexture();
@@ -30,6 +33,8 @@ private:
     GLuint instanceVBO_positions; // VBO for instance positions
     GLuint instanceVBO_velocities; // VBO for instance velocities
     GLuint gradientTexture;
+
+    glm::vec3 worldOffset = glm::vec3(0.0f);
 };
 
 #endif // GPUPARTICLE_DISPLAY3D_H

@@ -116,7 +116,7 @@ void GPUParticleDisplay::UpdateInstanceData() {
     std::vector<glm::vec3> velocities(numParticles);
     
     for (int i = 0; i < numParticles; ++i) {
-        positions[i] = particles[i].position;
+        positions[i] = particles[i].position + worldOffset;
         velocities[i] = particles[i].velocity;
     }
 
