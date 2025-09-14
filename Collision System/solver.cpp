@@ -1,11 +1,10 @@
 #include "solver.h"
 #include <iostream>
-#include <algorithm> // For std::max/min
-#include <chrono>    // For timing physics updates
+#include <algorithm>
+#include <chrono>
 
-// Performance timing variables
 static int frameCounter = 0;
-static const int TIMING_INTERVAL = 300; // Print timing every 300 frames (5 seconds at 60fps)
+static const int TIMING_INTERVAL = 300;
 static float totalGravityTime = 0.0f;
 static float totalCollisionTime = 0.0f;
 static float totalWallCollisionTime = 0.0f;
@@ -24,7 +23,6 @@ PhysicsSolver::~PhysicsSolver() {}
 Particle PhysicsSolver::createBall(glm::vec2 position, float dt) {
     Particle particle;
     
-    // Position still has a slight random offset
     particle.position = position + glm::vec2(
         randomFloat(-0.01f, 0.01f),
         randomFloat(-0.01f, 0.01f)
@@ -40,16 +38,12 @@ Particle PhysicsSolver::createBall(glm::vec2 position, float dt) {
     particle.acceleration = glm::vec2(0.0f);
     particle.id = static_cast<int>(particles.size());
 
-    // Create a velocity vector:
-    // X component has a random horizontal spread.
-    // Y component is negative for downward motion.
     glm::vec2 initialVelocity(
         randomFloat(-1.5f, 1.5f),
         randomFloat(0.5f, 2.0f)
     );
 
     particle.setVelocity(initialVelocity, dt);
-    // std::cout << "sub_dt: " << sub_dt << std::endl;
     particle.acceleration = glm::vec2(0.0f);
 
     return particle;

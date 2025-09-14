@@ -1,5 +1,3 @@
-// Window and input handling for the GPU fluid demo.
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -18,7 +16,6 @@ static void processInput(GLFWwindow* window);
 static void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 
-// Global pointer to fluid simulation for input handling
 static GPUFluidSimulation* g_fluidSim = nullptr;
 
 
@@ -55,7 +52,6 @@ int main() {
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    // Tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
@@ -65,40 +61,34 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
 
-    // Shaders
     Shader particleShader("SPHFluid/shaders/particle3d.vs", "SPHFluid/shaders/particle3d.fs");
-    Shader boxShader("SPHFluid/shaders/box.vs", "SPHFluid/shaders/box.fs"); // You will need to create this simple shader
+    Shader boxShader("SPHFluid/shaders/box.vs", "SPHFluid/shaders/box.fs");
 
-    // Create VAO for the infinite grid (required for OpenGL Core Profile)
     unsigned int gridVAO;
     glGenVertexArrays(1, &gridVAO);
 
-    // Infinite grid shader (same as used in the 2D window)
     Shader infiniteGridShader("shaders/infinite_grid.vs", "shaders/infinite_grid.fs");
 
-    // Simulation settings - tuned for proper 3D fluid behavior
     GPUSimulationSettings settings;
-    settings.gravity = -9.81f;  // Standard gravity - less aggressive
-    settings.smoothingRadius = 0.25f;  // Larger smoothing radius for better particle separation
-    settings.targetDensity = 630.0f;  // Higher target density to prevent over-compression
-    settings.pressureMultiplier = 288.0f;  // Reduced pressure to prevent squashing
-    settings.nearPressureMultiplier = 2.25f;  // Lower near pressure for less compression
-    settings.viscosityStrength = 0.001f;  // Slightly higher viscosity for stability
-    settings.boundsSize = glm::vec3(4.0f, 4.0f, 4.0f);  // Smaller bounds for better containment
-    settings.collisionDamping = 0.98f;  // Higher damping for smoother collisions
-    settings.boundaryForceMultiplier = 8.0f;  // Stronger boundary force to prevent escape
-    settings.boundaryForceDistance = 0.5f;  // Larger boundary force distance
-    settings.timeScale = 0.9f;  // Slower time scale for stability
-    settings.iterationsPerFrame = 3;  // Fewer iterations for smoother behavior
+    settings.gravity = -9.81f;
+    settings.smoothingRadius = 0.25f;
+    settings.targetDensity = 630.0f;
+    settings.pressureMultiplier = 288.0f;
+    settings.nearPressureMultiplier = 2.25f;
+    settings.viscosityStrength = 0.001f;
+    settings.boundsSize = glm::vec3(4.0f, 4.0f, 4.0f);
+    settings.collisionDamping = 0.98f;
+    settings.boundaryForceMultiplier = 8.0f;
+    settings.boundaryForceDistance = 0.5f;
+    settings.timeScale = 0.9f;
+    settings.iterationsPerFrame = 3;
 
-        // Initialize GPU fluid simulation with 3D parameters
-    const int numParticles = 15000; // Reduced for better visualization and less compression
+    const int numParticles = 10000;
     GPUFluidSimulation fluidSim(numParticles, settings);
-    g_fluidSim = &fluidSim;  // Set global pointer for input handling
+    g_fluidSim = &fluidSim;
     GPUParticleDisplay particleDisplay(&fluidSim, &particleShader);
     BoundingBox boundingBox(settings.boundsSize);
 
-    // Print simulation info
     std::cout << "3D GPU Fluid Simulation Started!" << std::endl;
     std::cout << "Particles: " << numParticles << std::endl;
     std::cout << "Bounds: " << settings.boundsSize.x << " x " << settings.boundsSize.y << " x " << settings.boundsSize.z << std::endl;
@@ -109,7 +99,6 @@ int main() {
     std::cout << "  R: Reset simulation" << std::endl;
     std::cout << "  ESC: Exit" << std::endl;
 
-    // Main render loop
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;

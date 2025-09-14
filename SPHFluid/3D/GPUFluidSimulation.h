@@ -5,7 +5,6 @@
 #include "GPUSort.h"
 
 // Note: std430 layout requires vec3 to be aligned to 16 bytes.
-// We add padding to ensure the struct size is a multiple of 16 bytes.
 struct GPUParticle {
     glm::vec3 position;
     float _padding1;        // Explicit padding to align to 16 bytes

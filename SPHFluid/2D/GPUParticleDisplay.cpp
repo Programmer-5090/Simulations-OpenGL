@@ -1,6 +1,3 @@
-// GPUParticleDisplay: renders particles using instanced quads and a 1D
-// gradient texture. Only position+velocity are uploaded per-frame.
-
 #include "GPUParticleDisplay.h"
 #include <cmath>
 #include <iostream>
@@ -31,23 +28,18 @@ void GPUParticleDisplay::InitializeRenderingResources() {
 
     glBindVertexArray(VAO);
 
-    // VBO for circle mesh vertices
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, circleVertices.size() * sizeof(glm::vec2), circleVertices.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // VBO for instance data (position and velocity)
-    // We now send a vec4 per particle: position (vec2) and velocity (vec2)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
     glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 
-    // Instance Position attribute (location 1)
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
     glEnableVertexAttribArray(1);
     glVertexAttribDivisor(1, 1);
 
-    // Instance Velocity attribute (location 2)
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)sizeof(glm::vec2));
     glEnableVertexAttribArray(2);
     glVertexAttribDivisor(2, 1);
@@ -57,7 +49,6 @@ void GPUParticleDisplay::InitializeRenderingResources() {
 
 void GPUParticleDisplay::GenerateCircleMesh() {
     circleVertices.clear();
-    // Simple quad used as instanced particle billboard.
     circleVertices.push_back(glm::vec2(-1.0f, -1.0f));
     circleVertices.push_back(glm::vec2( 1.0f, -1.0f));
     circleVertices.push_back(glm::vec2( 1.0f,  1.0f));

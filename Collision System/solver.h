@@ -16,7 +16,6 @@
 // Threading utilities
 #include "thread.hpp"
 
-// Using Threader from thread.hpp now
 
 class PhysicsSolver {
 private:

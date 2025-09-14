@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <cstring>
 
-// GPUFluidSimulation: manages GPU resources and runs 3D compute shader kernels.
-
 GPUFluidSimulation::GPUFluidSimulation(int numParticles, const GPUSimulationSettings& settings)
     : numParticles(numParticles), settings(settings),
       fluidComputeProgram(0), particleBuffer(0), spatialLookupBuffer(0), startIndicesBuffer(0){
@@ -26,7 +24,6 @@ GPUFluidSimulation::~GPUFluidSimulation() {
 }
 
 bool GPUFluidSimulation::InitializeGPU() {
-    // IMPORTANT: Load the new 3D compute shader
     fluidComputeProgram = ComputeHelper::LoadComputeShader("SPHFluid/shaders/FluidSim-3D.compute");
     if (fluidComputeProgram == 0) {
         return false;
@@ -46,15 +43,13 @@ bool GPUFluidSimulation::InitializeGPU() {
 void GPUFluidSimulation::InitializeParticles() {
     std::vector<GPUParticle> particles(numParticles);
 
-    // Create a very compact spawn area that fits well within bounds
-    glm::vec3 spawnSize(1.5f, 2.0f, 1.5f);  // Small, dense spawn area
-    glm::vec3 spawnCenter(0.0f, 0.0f, 0.0f);  // Start near bottom for gravity to work
+    glm::vec3 spawnSize(1.5f, 2.0f, 1.5f);
+    glm::vec3 spawnCenter(0.0f, 0.0f, 0.0f);
 
-    // Create particles in a tight cubic arrangement
     int particlesPerSide = std::max(1, static_cast<int>(std::cbrt(static_cast<float>(numParticles))) + 1);
     constexpr unsigned RNG_SEED = 42u;
     std::mt19937 gen(RNG_SEED);
-    std::uniform_real_distribution<float> dis(-0.02f, 0.02f); // Very small jitter to avoid perfect grid
+    std::uniform_real_distribution<float> dis(-0.02f, 0.02f);
 
     int particleIndex = 0;
     for (int x = 0; x < particlesPerSide && particleIndex < numParticles; x++) {
@@ -69,11 +64,10 @@ void GPUFluidSimulation::InitializeParticles() {
                     (tx - 0.5f) * spawnSize.x + spawnCenter.x,
                     (ty - 0.5f) * spawnSize.y + spawnCenter.y,
                     (tz - 0.5f) * spawnSize.z + spawnCenter.z
-                );// + jitter;
+                );
 
-                // Initialize particles at rest
                 particles[particleIndex].position = pos;
-                particles[particleIndex].velocity = glm::vec3(0.0f, 0.0f, 0.0f); // Start at rest
+                particles[particleIndex].velocity = glm::vec3(0.0f, 0.0f, 0.0f);
                 particles[particleIndex].predictedPosition = pos;
                 particles[particleIndex].density = 0.0f;
                 particles[particleIndex].nearDensity = 0.0f;
@@ -85,9 +79,7 @@ void GPUFluidSimulation::InitializeParticles() {
         }
     }
 
-    // Upload initial particle data to the GPU
     ComputeHelper::WriteBuffer(particleBuffer, particles);
-    // Ensure the GPU sort helper knows which buffers to use (defensive - already set in InitializeGPU)
     gpuSort.SetBuffers(spatialLookupBuffer, startIndicesBuffer);
 }
 
@@ -95,11 +87,10 @@ void GPUFluidSimulation::UpdateConstants() {
     const float pi = 3.14159265359f;
     float h = settings.smoothingRadius;
 
-    // Correct 3D SPH kernel constants from the reference implementation
     poly6Factor = 315.0f / (64.0f * pi * std::powf(h, 9.0f));
-    spikyPow2Factor = 15.0f / (2.0f * pi * std::powf(h, 5.0f)); // h^5 power
+    spikyPow2Factor = 15.0f / (2.0f * pi * std::powf(h, 5.0f));
     spikyPow3Factor = 15.0f / (pi * std::powf(h, 6.0f));
-    spikyPow2DerivativeFactor = 15.0f / (pi * std::powf(h, 5.0f)); // h^5 power
+    spikyPow2DerivativeFactor = 15.0f / (pi * std::powf(h, 5.0f));
     spikyPow3DerivativeFactor = 45.0f / (pi * std::powf(h, 6.0f));
 }
 
@@ -118,21 +109,17 @@ void GPUFluidSimulation::RunComputeKernel(KernelType kernel) {
 }
 
 void GPUFluidSimulation::UpdateSpatialHashing() {
-    // Prepare start indices buffer with sentinel value
     std::vector<uint32_t> startIndices(numParticles, static_cast<uint32_t>(numParticles));
     ComputeHelper::WriteBuffer(startIndicesBuffer, startIndices);
 
     RunComputeKernel(UpdateSpatialHashKernel);
 
-    // Sort and compute offsets using GPUSort helper
     gpuSort.SortAndCalculateOffsets(spatialLookupBuffer, numParticles);
 }
 
-// In GPUFluidSimulation.cpp
 void GPUFluidSimulation::SetComputeUniforms() {
     glUseProgram(fluidComputeProgram);
     
-    // DEBUG: Print uniform values
     static int debugCount = 0;
     if (debugCount < 3) {
         std::cout << "DEBUG Uniforms frame " << debugCount << ":\n";
@@ -143,7 +130,6 @@ void GPUFluidSimulation::SetComputeUniforms() {
         debugCount++;
     }
     
-    // All your existing uniforms...
     glUniform1i(glGetUniformLocation(fluidComputeProgram, "numParticles"), numParticles);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "gravity"), settings.gravity);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "collisionDamping"), settings.collisionDamping);
@@ -154,12 +140,8 @@ void GPUFluidSimulation::SetComputeUniforms() {
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "viscosityStrength"), settings.viscosityStrength);
     glUniform3f(glGetUniformLocation(fluidComputeProgram, "boundsSize"), settings.boundsSize.x, settings.boundsSize.y, settings.boundsSize.z);
 
-    // --- NEW UNIFORMS TO MATCH REFERENCE ---
-    // Since we don't have a scene transform, we'll use identity matrices and a zero center.
-    // This makes the shader logic work while replicating the old behavior.
     glUniform3f(glGetUniformLocation(fluidComputeProgram, "centre"), 0.0f, 0.0f, 0.0f);
     
-    // Identity matrix (no rotation or translation)
     const float identityMatrix[16] = {
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,
@@ -168,9 +150,7 @@ void GPUFluidSimulation::SetComputeUniforms() {
     };
     glUniformMatrix4fv(glGetUniformLocation(fluidComputeProgram, "localToWorld"), 1, GL_FALSE, identityMatrix);
     glUniformMatrix4fv(glGetUniformLocation(fluidComputeProgram, "worldToLocal"), 1, GL_FALSE, identityMatrix);
-    // --- END OF NEW UNIFORMS ---
     
-    // Kernel factors
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "poly6Factor"), poly6Factor);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow2Factor"), spikyPow2Factor);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow3Factor"), spikyPow3Factor);
@@ -179,8 +159,7 @@ void GPUFluidSimulation::SetComputeUniforms() {
 }
 
 void GPUFluidSimulation::Update(float deltaTime) {
-    // CRITICAL FIX: Clamp deltaTime to prevent huge first-frame jumps
-    deltaTime = std::min(deltaTime, 0.016f); // Cap at 60 FPS (16ms) - more conservative
+    deltaTime = std::min(deltaTime, 0.016f);
     
     float timeStep = deltaTime / settings.iterationsPerFrame * settings.timeScale;
     
@@ -188,19 +167,15 @@ void GPUFluidSimulation::Update(float deltaTime) {
     SetComputeUniforms();
     
     for (int i = 0; i < settings.iterationsPerFrame; i++) {
-        // Set delta time for this iteration
         glUseProgram(fluidComputeProgram);
         glUniform1f(glGetUniformLocation(fluidComputeProgram, "deltaTime"), timeStep);
         
         RunComputeKernel(ExternalForcesKernel);
         
-        // STEP 1: Enable spatial hashing ✅
         UpdateSpatialHashing();
         
-        // STEP 2: Enable density calculation
         RunComputeKernel(CalculateDensitiesKernel);
         
-        // COMMENTED OUT FOR TESTING - Add back gradually
         RunComputeKernel(CalculatePressureForcesKernel);
         RunComputeKernel(CalculateViscosityKernel);
         

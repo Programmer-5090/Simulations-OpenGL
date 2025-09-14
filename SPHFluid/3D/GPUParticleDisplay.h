@@ -14,7 +14,7 @@ public:
     GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader);
     ~GPUParticleDisplay();
 
-    void Update(); // This might not be needed if all data is on GPU
+    void Update();
     void Render(const glm::mat4& view, const glm::mat4& projection);
 
 private:

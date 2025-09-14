@@ -15,7 +15,6 @@ public:
 private:
     GLuint VAO, VBO, EBO;
     glm::mat4 modelMatrix;
-    // You'll need a simple shader for this. For now, we assume one is bound externally.
 };
 
 #endif // BOUNDINGBOX_H

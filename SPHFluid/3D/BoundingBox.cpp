@@ -53,8 +53,6 @@ void BoundingBox::SetModelMatrix(const glm::mat4& model) {
 }
 
 void BoundingBox::Render(const glm::mat4& view, const glm::mat4& projection) {
-    // Note: This assumes a simple shader is already bound that takes model, view, projection
-    // and outputs a solid color. You would need to manage shader binding in your main loop.
     glBindVertexArray(VAO);
     glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);

@@ -9,8 +9,8 @@
 #include "shader.h"
 #include "camera.h"
 #include "model.h"
-#include "geometry/sphere.h"  // Include your new sphere class
-#include "geometry/circle.h" // Include polygon class for circles
+#include "geometry/sphere.h"
+#include "geometry/circle.h"
 #include <iostream>
 #include <sstream>
 #include <random>
@@ -32,7 +32,7 @@ float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
 // timing
-float deltaTime = 0.0f;	// time between current frame and last frame
+float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 // Sphere data structure
@@ -50,7 +50,6 @@ struct CircleData {
     float radius;
 };
 
-// Generate random float between min and max
 float randomFloat(float min, float max) {
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -60,8 +59,6 @@ float randomFloat(float min, float max) {
 
 int main()
 {
-    // glfw: initialize and configure
-    // ------------------------------
     if (!glfwInit()) {
         std::cout << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -75,8 +72,6 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    // glfw window creation
-    // --------------------
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
     if (window == NULL)
     {
@@ -89,11 +84,8 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // glad: load all OpenGL function pointers
-    // ---------------------------------------
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         std::cout << "Failed to initialize GLAD" << std::endl;
@@ -176,11 +168,6 @@ int main()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    
-    // render loop
-    // -----------
-    // draw in wireframe
-    //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     // render loop
     // -----------

@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <cstring>
 
-// GPUFluidSimulation: manages GPU resources and runs compute shader kernels.
-
 GPUFluidSimulation::GPUFluidSimulation(int numParticles, const GPUSimulationSettings& settings)
     : numParticles(numParticles), settings(settings), 
       fluidComputeProgram(0), particleBuffer(0), spatialLookupBuffer(0), startIndicesBuffer(0) {
@@ -52,8 +50,7 @@ void GPUFluidSimulation::InitializeParticles() {
     int numX = static_cast<int>(std::ceil(std::sqrt(aspectRatio * numParticles)));
     int numY = static_cast<int>(std::ceil(static_cast<float>(numParticles) / numX));
 
-    // Use a named constexpr seed for clarity and easy change
-    constexpr unsigned RNG_SEED = 42u; // Fixed seed for reproducibility
+    constexpr unsigned RNG_SEED = 42u;
     std::mt19937 gen(RNG_SEED);
     std::uniform_real_distribution<float> dis(-0.5f, 0.5f);
     
@@ -63,7 +60,6 @@ void GPUFluidSimulation::InitializeParticles() {
             float tx = (numX <= 1) ? 0.5f : static_cast<float>(x) / (numX - 1);
             float ty = (numY <= 1) ? 0.5f : static_cast<float>(y) / (numY - 1);
             
-            // Add small random jitter
             glm::vec2 jitter(dis(gen) * 0.1f, dis(gen) * 0.1f);
             
             particles[particleIndex].position = glm::vec2(
@@ -104,7 +100,6 @@ void GPUFluidSimulation::Update(float deltaTime) {
     SetComputeUniforms();
     
     for (int i = 0; i < settings.iterationsPerFrame; i++) {
-        // Set delta time for this iteration
         glUseProgram(fluidComputeProgram);
         glUniform1f(glGetUniformLocation(fluidComputeProgram, "deltaTime"), timeStep);
         
@@ -146,8 +141,6 @@ void GPUFluidSimulation::UpdateSpatialHashing() {
 }
 
 void GPUFluidSimulation::CalculateStartIndices() {
-    // Initialize start index buffer with sentinel value (numParticles) meaning
-    // "empty cell". Use explicit cast to make intent clear.
     std::vector<uint32_t> startIndices(numParticles, static_cast<uint32_t>(numParticles));
     ComputeHelper::WriteBuffer(startIndicesBuffer, startIndices);
 }
@@ -170,14 +163,12 @@ void GPUFluidSimulation::SetComputeUniforms() {
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryForceMultiplier"), settings.boundaryForceMultiplier);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryForceDistance"), settings.boundaryForceDistance);
     
-    // Interaction uniforms
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "interactionRadius"), settings.interactionRadius);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "interactionStrength"), settings.interactionStrength);
     glUniform2f(glGetUniformLocation(fluidComputeProgram, "mousePosition"), settings.mousePosition.x, settings.mousePosition.y);
     glUniform1i(glGetUniformLocation(fluidComputeProgram, "leftMousePressed"), settings.leftMousePressed ? 1 : 0);
     glUniform1i(glGetUniformLocation(fluidComputeProgram, "rightMousePressed"), settings.rightMousePressed ? 1 : 0);
     
-    // Kernel factors
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "poly6Factor"), poly6Factor);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow2Factor"), spikyPow2Factor);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow3Factor"), spikyPow3Factor);
@@ -188,15 +179,12 @@ void GPUFluidSimulation::SetComputeUniforms() {
 void GPUFluidSimulation::RunComputeKernel(KernelType kernel) {
     glUseProgram(fluidComputeProgram);
     
-    // Bind buffers
     ComputeHelper::BindBuffer(particleBuffer, 0);
     ComputeHelper::BindBuffer(spatialLookupBuffer, 1);
     ComputeHelper::BindBuffer(startIndicesBuffer, 2);
     
-    // Set current kernel
     glUniform1i(glGetUniformLocation(fluidComputeProgram, "currentKernel"), static_cast<int>(kernel));
     
-    // Dispatch
     int numGroups = ComputeHelper::GetThreadGroupSizes(numParticles, 64);
     ComputeHelper::Dispatch(fluidComputeProgram, numGroups);
 }

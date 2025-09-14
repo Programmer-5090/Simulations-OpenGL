@@ -103,24 +103,24 @@ int main() {
 
     // Initialize fluid simulation with tuned parameters for the GPU build
     GPUSimulationSettings settings;
-    settings.gravity = -12.0f;          // Slightly reduced to avoid over-compression at bottom
-    settings.smoothingRadius = 0.35f;   // Slightly larger kernel for smoother density gradient
-    settings.targetDensity = 55.0f;     // Higher target density for more uniform packing
-    settings.pressureMultiplier = 500.0f; // Balanced primary pressure
-    settings.nearPressureMultiplier = 18.0f; // Strong near pressure -> pseudo surface tension
-    settings.viscosityStrength = 0.06f; // Slightly lower to keep surface lively
+    settings.gravity = -12.0f; 
+    settings.smoothingRadius = 0.35f;
+    settings.targetDensity = 55.0f;
+    settings.pressureMultiplier = 500.0f;
+    settings.nearPressureMultiplier = 18.0f;
+    settings.viscosityStrength = 0.06f;
     settings.boundsSize = glm::vec2(WORLD_WIDTH, WORLD_HEIGHT);
     settings.obstacleSize = glm::vec2(0.0f, 0.0f); 
     settings.obstacleCenter = glm::vec2(0.0f, 0.0f);
-    settings.interactionRadius = 2.0f;  // Interaction search radius
-    settings.interactionStrength = 150.0f; // Interaction force strength
-    settings.collisionDamping = 0.95f;   // Collision damping factor
+    settings.interactionRadius = 2.0f;
+    settings.interactionStrength = 150.0f;
+    settings.collisionDamping = 0.95f;
     settings.timeScale = 1.0f;          
     settings.iterationsPerFrame = 4;
-    settings.boundaryForceMultiplier = 2.0f; // Disabled explicit boundary force (handled via collisions)
+    settings.boundaryForceMultiplier = 2.0f;
     settings.boundaryForceDistance = 0.0f;
     
-    const int numParticles = 50000; // Number of particles
+    const int numParticles = 10000;
     fluidSim = new GPUFluidSimulation(numParticles, settings);
     particleDisplay = new GPUParticleDisplay(fluidSim, &particleShader);
     

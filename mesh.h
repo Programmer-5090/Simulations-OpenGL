@@ -16,7 +16,7 @@ struct Vertex {
 struct Texture {
     unsigned int id;
     std::string type;
-    std::string path;  // we store the path of the texture to compare with other textures
+    std::string path;  // store the path of the texture to compare with other textures
 };
 
 class Mesh {

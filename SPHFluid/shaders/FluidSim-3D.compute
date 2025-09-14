@@ -1,6 +1,5 @@
 #version 430
 
-// Kernel indices
 const int ExternalForcesKernel = 0;
 const int UpdateSpatialHashKernel = 1;
 const int CalculateDensitiesKernel = 2;
@@ -8,7 +7,6 @@ const int CalculatePressureForcesKernel = 3;
 const int CalculateViscosityKernel = 4;
 const int UpdatePositionsKernel = 5;
 
-// Work group size
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 struct Particle {
@@ -27,7 +25,6 @@ struct SpatialLookup {
     uint cellKey;
 };
 
-// Buffers (unchanged)
 layout(std430, binding = 0) restrict buffer ParticleBuffer {
     Particle particles[];
 };
@@ -50,21 +47,17 @@ uniform float nearPressureMultiplier;
 uniform float viscosityStrength;
 uniform vec3 boundsSize;
 
-// --- NEW UNIFORMS FROM REFERENCE ---
 uniform vec3 centre;
 uniform mat4 localToWorld;
 uniform mat4 worldToLocal;
 
-// Precomputed kernel factors
 uniform float poly6Factor;
 uniform float spikyPow2Factor;
 uniform float spikyPow3Factor;
 uniform float spikyPow2DerivativeFactor;
 uniform float spikyPow3DerivativeFactor;
 
-// Current kernel being executed
 uniform int currentKernel;
-// --- UPDATED: NEIGHBOR PROCESSING LOOP ---
 const ivec3 offsets3D[27] = ivec3[](
     ivec3(-1, -1, -1), ivec3(-1, -1, 0), ivec3(-1, -1, 1),
     ivec3(-1, 0, -1), ivec3(-1, 0, 0), ivec3(-1, 0, 1),
@@ -82,7 +75,6 @@ ivec3 GetCell(vec3 position) {
 }
 
 uint HashCell(ivec3 cell) {
-    // CRITICAL FIX: Cast to unsigned to handle negative coordinates properly
     uvec3 ucell = uvec3(cell);
     uint k1 = 15823;
     uint k2 = 9737333;
@@ -141,7 +133,6 @@ float NearPressureFromDensity(float nearDensity)
 }
 
 
-// --- UPDATED: NEIGHBOR PROCESSING LOOP ---
 void ProcessNeighbors(uint particleIndex, int kernelType, inout vec3 pressureForce, inout vec3 viscosityForce, inout float density, inout float nearDensity, bool includeSelf) {
     ivec3 originCell = GetCell(particles[particleIndex].predictedPosition);
     float sqrRadius = smoothingRadius * smoothingRadius;
@@ -167,8 +158,8 @@ void ProcessNeighbors(uint particleIndex, int kernelType, inout vec3 pressureFor
             if (sqrDst <= sqrRadius) {
                 float dst = sqrt(sqrDst);
                 if (kernelType == CalculateDensitiesKernel) {
-                    density += SpikyKernelPow2(dst, smoothingRadius); // [cite: 94, 120]
-                    nearDensity += SpikyKernelPow3(dst, smoothingRadius); // [cite: 120]
+                    density += SpikyKernelPow2(dst, smoothingRadius);
+                    nearDensity += SpikyKernelPow3(dst, smoothingRadius);
                 } else if (kernelType == CalculatePressureForcesKernel) {
                     vec3 dirToNeighbor = (dst > 0) ? offset / dst : vec3(0, 1, 0);
                     
@@ -204,7 +195,6 @@ void ProcessNeighbors(uint particleIndex, int kernelType, inout vec3 pressureFor
     }
 }
 
-// --- SIMPLIFIED: COLLISION HANDLING LIKE 2D VERSION ---
 void HandleCollisions(inout Particle particle) {
     vec3 halfBounds = boundsSize * 0.5;
     
@@ -224,7 +214,6 @@ void HandleCollisions(inout Particle particle) {
 }
 
 
-// --- MAIN SIMULATION LOGIC ---
 void main() {
     uint index = gl_GlobalInvocationID.x;
     if (index >= numParticles) return;
@@ -250,7 +239,6 @@ void main() {
         vec3 dummyPressure = vec3(0.0);
         vec3 dummyViscosity = vec3(0.0);
         ProcessNeighbors(index, CalculateDensitiesKernel, dummyPressure, dummyViscosity, particles[index].density, particles[index].nearDensity, true);
-        // Calculate and store pressure values like in 2D version
         particles[index].pressure = (particles[index].density - targetDensity) * pressureMultiplier;
         particles[index].nearPressure = particles[index].nearDensity * nearPressureMultiplier;
     }
@@ -272,11 +260,11 @@ void main() {
         float dummyDensity = 0.0;
         float dummyNearDensity = 0.0;
         ProcessNeighbors(index, CalculateViscosityKernel, dummyPressure, viscosityForce, dummyDensity, dummyNearDensity, false);
-        particles[index].velocity += viscosityForce * viscosityStrength * deltaTime; // [cite: 144]
+        particles[index].velocity += viscosityForce * viscosityStrength * deltaTime;
     }
     else if (currentKernel == UpdatePositionsKernel) {
         // Add velocity damping to help particles settle
-        particles[index].velocity *= 0.995; // Small damping factor
+        particles[index].velocity *= 0.995;
 
         // Update positions
         vec3 newPosition = particles[index].position + particles[index].velocity * deltaTime;

@@ -132,27 +132,22 @@ int main() {
     std::cout << "Spawning stops automatically if physics time exceeds " << PHYSICS_TIME_THRESHOLD << "ms per frame" << std::endl;
     std::cout << "Or if particle density exceeds " << MAX_PARTICLE_DENSITY << " particles per world unit area" << std::endl;
 
-    // Main loop
     std::cout << "Entering main loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
-        // Poll events at the START of the frame so input + callbacks affect this frame's physics step
         glfwPollEvents();
         processInput(window);
 
-        // Timing after input
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // Prevent spiral of death (cap frame delta)
         if (deltaTime > 0.0167f) deltaTime = 0.0167f;
         accumulator += deltaTime;
 
-        // Automatic spawning: four vertically stacked streams near top-left (if enabled)
         if (spawnEnabled) {
             autoSpawnTimer += deltaTime;
             while (autoSpawnTimer >= AUTO_SPAWN_INTERVAL) {
-                float baseY = WORLD_TOP - TOP_MARGIN; // starting y for top stream
+                float baseY = WORLD_TOP - TOP_MARGIN;
                 float x = WORLD_LEFT + SPAWN_MARGIN_X;
                 for (int i = 0; i < STREAM_COUNT; ++i) {
                     float y = baseY - i * STREAM_SPACING;
@@ -165,13 +160,11 @@ int main() {
             }
         }
 
-        // Fixed timestep physics - track physics performance
         try {
             while (accumulator >= fixedDeltaTime) {
                 solver.update(fixedDeltaTime);
                 accumulator -= fixedDeltaTime;
                 
-                // Track peak physics time in this window
                 float physicsTime = solver.getLastPhysicsTime();
                 maxPhysicsTimeInWindow = std::max(maxPhysicsTimeInWindow, physicsTime);
             }

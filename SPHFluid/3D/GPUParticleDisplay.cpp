@@ -9,9 +9,7 @@ GPUParticleDisplay::GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader)
     : simulation(sim), particleShader(shader),
       instanceVBO_positions(0), instanceVBO_velocities(0), gradientTexture(0) {
     
-    // Create the CPU-side parametric sphere and convert to a renderable Mesh
     particleMesh = new Sphere(1.0f, 16);
-    // Convert generated parametric geometry into a Mesh for rendering
     particleRenderMesh = new Mesh(particleMesh->toMesh());
     InitializeRenderingResources();
 }
@@ -27,30 +25,25 @@ GPUParticleDisplay::~GPUParticleDisplay() {
 void GPUParticleDisplay::InitializeRenderingResources() {
     CreateGradientTexture();
 
-    // VBO for instance positions
     glGenBuffers(1, &instanceVBO_positions);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
     glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
     
-    // VBO for instance velocities
     glGenBuffers(1, &instanceVBO_velocities);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
     glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
 
-    // Set up VAO on the converted Mesh
     glBindVertexArray(particleRenderMesh->getVAO());
 
-    // Instance Position attribute (location 2)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-    glVertexAttribDivisor(2, 1); // This attribute is per-instance
+    glVertexAttribDivisor(2, 1);
 
-    // Instance Velocity attribute (location 3)
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-    glVertexAttribDivisor(3, 1); // This attribute is per-instance
+    glVertexAttribDivisor(3, 1);
 
     glBindVertexArray(0);
 }
@@ -110,10 +103,7 @@ void GPUParticleDisplay::Update() {
 }
 
 void GPUParticleDisplay::UpdateInstanceData() {
-    // Since the simulation buffer contains interleaved GPUParticle structs,
-    // we need to copy the data with proper strides, not as contiguous blocks.
-    // The safest approach is to read the data and then upload just the positions/velocities.
-    
+
     GLuint simBuffer = simulation->GetParticleBuffer();
     int numParticles = simulation->GetNumParticles();
     if (numParticles <= 0) return;
@@ -145,7 +135,6 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     particleShader->use();
 
     // Scale the base sphere mesh to be proportional to the smoothing radius
-    // Using a scale factor to make the visual size reasonable relative to the smoothing radius
     float particleRadius = simulation->GetSettings().smoothingRadius * 0.4f; // 40% of smoothing radius for visual appeal
     glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(particleRadius));
     particleShader->setMat4("model", model);
