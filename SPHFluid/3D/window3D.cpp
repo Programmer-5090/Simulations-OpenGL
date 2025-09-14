@@ -77,15 +77,21 @@ int main() {
 
     GPUSimulationSettings settings;
     settings.gravity = -9.81f;
-    settings.smoothingRadius = 0.25f;
+    settings.smoothingRadius = 0.45f;
     settings.targetDensity = 630.0f;
     settings.pressureMultiplier = 288.0f;
     settings.nearPressureMultiplier = 2.25f;
     settings.viscosityStrength = 0.001f;
     settings.boundsSize = glm::vec3(4.0f, 4.0f, 4.0f);
-    settings.collisionDamping = 0.98f;
-    settings.boundaryForceMultiplier = 8.0f;
+    settings.collisionDamping = 0.95f;  // Slightly less damping
+    settings.boundaryForceMultiplier = 1.0f;
     settings.boundaryForceDistance = 0.5f;
+    // New boundary tuning parameters for better near-wall behavior
+    settings.boundaryLayerFactor = 1.0f;
+    settings.boundaryNormalDamp = 0.7f;
+    settings.boundaryMirrorScale = 1.0f;
+    settings.boundaryNearMirrorScale = 0.5f;
+    settings.boundaryPressureScale = 1.0f; // Disable additional inward pressure for now
     settings.timeScale = 0.9f;
     settings.iterationsPerFrame = 3;
 

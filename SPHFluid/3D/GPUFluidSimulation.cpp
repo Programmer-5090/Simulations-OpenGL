@@ -156,6 +156,13 @@ void GPUFluidSimulation::SetComputeUniforms() {
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow3Factor"), spikyPow3Factor);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow2DerivativeFactor"), spikyPow2DerivativeFactor);
     glUniform1f(glGetUniformLocation(fluidComputeProgram, "spikyPow3DerivativeFactor"), spikyPow3DerivativeFactor);
+
+    // Boundary tuning uniforms
+    glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryLayerFactor"), settings.boundaryLayerFactor);
+    glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryNormalDamp"), settings.boundaryNormalDamp);
+    glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryMirrorScale"), settings.boundaryMirrorScale);
+    glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryNearMirrorScale"), settings.boundaryNearMirrorScale);
+    glUniform1f(glGetUniformLocation(fluidComputeProgram, "boundaryPressureScale"), settings.boundaryPressureScale);
 }
 
 void GPUFluidSimulation::Update(float deltaTime) {
@@ -173,6 +180,8 @@ void GPUFluidSimulation::Update(float deltaTime) {
         RunComputeKernel(ExternalForcesKernel);
         
         UpdateSpatialHashing();
+        RunComputeKernel(UpdateSpatialHashKernel);
+        gpuSort.SortAndCalculateOffsets(spatialLookupBuffer, numParticles);
         
         RunComputeKernel(CalculateDensitiesKernel);
         

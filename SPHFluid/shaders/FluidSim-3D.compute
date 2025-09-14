@@ -58,6 +58,13 @@ uniform float spikyPow2DerivativeFactor;
 uniform float spikyPow3DerivativeFactor;
 
 uniform int currentKernel;
+
+// Optional boundary tuning uniforms (safe fallbacks used if unset or zero)
+uniform float boundaryLayerFactor;     // relative to smoothingRadius; suggested 0.5–0.8
+uniform float boundaryNormalDamp;      // 0..1 multiplier for normal damping strength
+uniform float boundaryMirrorScale;     // 0..1 scale of added density near walls
+uniform float boundaryNearMirrorScale; // 0..1 scale of added near-density near walls
+uniform float boundaryPressureScale;   // inward push near walls to counter boundary voids
 const ivec3 offsets3D[27] = ivec3[](
     ivec3(-1, -1, -1), ivec3(-1, -1, 0), ivec3(-1, -1, 1),
     ivec3(-1, 0, -1), ivec3(-1, 0, 0), ivec3(-1, 0, 1),
@@ -132,6 +139,113 @@ float NearPressureFromDensity(float nearDensity)
 	return nearDensity * nearPressureMultiplier;
 }
 
+// --- Boundary helpers ------------------------------------------------------
+// Distance to each box face (half-extents)
+vec3 DistanceToWalls(vec3 p)
+{
+    vec3 halfB = boundsSize * 0.5;
+    return vec3(halfB.x - abs(p.x), halfB.y - abs(p.y), halfB.z - abs(p.z));
+}
+
+// Add virtual mass (mirror contribution) to density near boundaries to avoid gaps
+void ApplyBoundaryDensityCompensation(in vec3 p, inout float density, inout float nearDensity)
+{
+    vec3 d = DistanceToWalls(p);
+    float layerFactor = (boundaryLayerFactor > 0.0) ? boundaryLayerFactor : 0.6; // default 0.6 h
+    float hLayer = smoothingRadius * clamp(layerFactor, 0.2, 1.0);
+    float mirrorScale = (boundaryMirrorScale > 0.0) ? boundaryMirrorScale : 0.5; // default weaker
+    float nearScale   = (boundaryNearMirrorScale > 0.0) ? boundaryNearMirrorScale : 0.25;
+    // For each axis, if within one kernel radius of a wall, add integrated kernel tail
+    // Approximate by evaluating kernel at mirrored sample distance along normal.
+    // This is a cheap heuristic: w = SmoothingKernelPoly6(x, h) with x mapped from proximity.
+    for (int k = 0; k < 3; ++k) {
+        float distToWall = d[k];
+        if (distToWall < hLayer) {
+            float t = 1.0 - clamp(distToWall / hLayer, 0.0, 1.0); // 0 far, 1 at wall
+            t = t * t; // bias towards wall
+            float mirrorDst = smoothingRadius - distToWall; // use full kernel radius
+            mirrorDst = clamp(mirrorDst, 0.0, smoothingRadius);
+            density     += SmoothingKernelPoly6(mirrorDst, smoothingRadius) * (mirrorScale * t);
+            nearDensity += SpikyKernelPow3(mirrorDst, smoothingRadius) * (nearScale * t);
+        }
+    }
+}
+
+// Project velocity to kill normal component near walls (Dirichlet BC)
+void EnforceNoNormalFlowNearWalls(in vec3 pos, inout vec3 vel)
+{
+    vec3 halfB = boundsSize * 0.5;
+    vec3 dist = DistanceToWalls(pos);
+    float layerFactor = (boundaryLayerFactor > 0.0) ? boundaryLayerFactor : 0.6;
+    float hLayer = smoothingRadius * clamp(layerFactor, 0.2, 1.0);
+    float dampK = (boundaryNormalDamp > 0.0) ? boundaryNormalDamp : 0.7;
+
+    // X walls
+    if (dist.x < hLayer) {
+        float n = sign(pos.x); // +1 if on +X side, -1 if on -X
+        float alpha = 1.0 - clamp(dist.x / hLayer, 0.0, 1.0); // 0 far, 1 at wall
+        alpha = dampK * (alpha * alpha);
+        // Remove fraction of normal velocity component
+        float vn = dot(vel, vec3(n, 0, 0));
+        vel -= vec3(n, 0, 0) * vn * alpha; // progressively zero normal
+    }
+    // Y walls
+    if (dist.y < hLayer) {
+        float n = sign(pos.y);
+        float alpha = 1.0 - clamp(dist.y / hLayer, 0.0, 1.0);
+        alpha = dampK * (alpha * alpha);
+        float vn = dot(vel, vec3(0, n, 0));
+        vel -= vec3(0, n, 0) * vn * alpha;
+    }
+    // Z walls
+    if (dist.z < hLayer) {
+        float n = sign(pos.z);
+        float alpha = 1.0 - clamp(dist.z / hLayer, 0.0, 1.0);
+        alpha = dampK * (alpha * alpha);
+        float vn = dot(vel, vec3(0, 0, n));
+        vel -= vec3(0, 0, n) * vn * alpha;
+    }
+}
+
+
+// Apply an inward pressure-like force near walls to counteract kernel truncation
+void ApplyBoundaryPressureForce(in vec3 pos, inout vec3 force)
+{
+    float scale = (boundaryPressureScale > 0.0) ? boundaryPressureScale : 0.0;
+    if (scale <= 0.0) return;
+
+    vec3 dist = DistanceToWalls(pos);
+    float layerFactor = (boundaryLayerFactor > 0.0) ? boundaryLayerFactor : 0.6;
+    float hLayer = smoothingRadius * clamp(layerFactor, 0.2, 1.0);
+
+    // X walls
+    if (dist.x < hLayer) {
+        float n = sign(pos.x);
+        float t = 1.0 - clamp(dist.x / hLayer, 0.0, 1.0);
+        t = t * t;
+        float mirrorDst = clamp(smoothingRadius - dist.x, 0.0, smoothingRadius);
+        float gradMag = -DerivativeSpikyPow2(max(mirrorDst, 1e-4), smoothingRadius);
+        force += vec3(-n, 0, 0) * (scale * t * gradMag);
+    }
+    // Y walls
+    if (dist.y < hLayer) {
+        float n = sign(pos.y);
+        float t = 1.0 - clamp(dist.y / hLayer, 0.0, 1.0);
+        t = t * t;
+        float mirrorDst = clamp(smoothingRadius - dist.y, 0.0, smoothingRadius);
+        float gradMag = -DerivativeSpikyPow2(max(mirrorDst, 1e-4), smoothingRadius);
+        force += vec3(0, -n, 0) * (scale * t * gradMag);
+    }
+    // Z walls
+    if (dist.z < hLayer) {
+        float n = sign(pos.z);
+        float t = 1.0 - clamp(dist.z / hLayer, 0.0, 1.0);
+        t = t * t;
+        float mirrorDst = clamp(smoothingRadius - dist.z, 0.0, smoothingRadius);
+        float gradMag = -DerivativeSpikyPow2(max(mirrorDst, 1e-4), smoothingRadius);
+        force += vec3(0, 0, -n) * (scale * t * gradMag);
+    }
+}
 
 void ProcessNeighbors(uint particleIndex, int kernelType, inout vec3 pressureForce, inout vec3 viscosityForce, inout float density, inout float nearDensity, bool includeSelf) {
     ivec3 originCell = GetCell(particles[particleIndex].predictedPosition);
@@ -158,26 +272,27 @@ void ProcessNeighbors(uint particleIndex, int kernelType, inout vec3 pressureFor
             if (sqrDst <= sqrRadius) {
                 float dst = sqrt(sqrDst);
                 if (kernelType == CalculateDensitiesKernel) {
-                    density += SpikyKernelPow2(dst, smoothingRadius);
+                    density += SmoothingKernelPoly6(dst, smoothingRadius);
                     nearDensity += SpikyKernelPow3(dst, smoothingRadius);
                 } else if (kernelType == CalculatePressureForcesKernel) {
                     vec3 dirToNeighbor = (dst > 0) ? offset / dst : vec3(0, 1, 0);
                     
                     // Use pre-calculated pressure values with better stability checks
-                    float neighborDensity = max(particles[neighborIndex].density, 0.1);
-                    float neighborNearDensity = max(particles[neighborIndex].nearDensity, 0.1);
-                    float currentDensity = max(particles[particleIndex].density, 0.1);
-                    float currentNearDensity = max(particles[particleIndex].nearDensity, 0.1);
+                    float neighborDensity = max(particles[neighborIndex].density, 0.01);
+                    float neighborNearDensity = max(particles[neighborIndex].nearDensity, 0.01);
+                    float currentDensity = max(particles[particleIndex].density, 0.01);
+                    float currentNearDensity = max(particles[particleIndex].nearDensity, 0.01);
                     
+                    // SPH pressure force: F = -m_j * (P_i + P_j) / (2 * ρ_j) * ∇W
                     float sharedPressure = (particles[particleIndex].pressure + particles[neighborIndex].pressure) * 0.5;
                     float sharedNearPressure = (particles[particleIndex].nearPressure + particles[neighborIndex].nearPressure) * 0.5;
                     
-                    // Add stability by limiting force magnitude
+                    // Calculate pressure gradients
                     vec3 pressureGradient = dirToNeighbor * DerivativeSpikyPow2(dst, smoothingRadius) * sharedPressure / neighborDensity;
                     vec3 nearPressureGradient = dirToNeighbor * DerivativeSpikyPow3(dst, smoothingRadius) * sharedNearPressure / neighborNearDensity;
                     
                     // Limit the magnitude of pressure forces to prevent explosion
-                    float maxForce = 1000.0;
+                    float maxForce = 2000.0;
                     if (length(pressureGradient) > maxForce) {
                         pressureGradient = normalize(pressureGradient) * maxForce;
                     }
@@ -220,9 +335,8 @@ void main() {
 
     if (currentKernel == ExternalForcesKernel) {
         particles[index].velocity += vec3(0, gravity, 0) * deltaTime;
-        // Predict position
-        const float predictionFactor = 1.0 / 120.0;
-        particles[index].predictedPosition = particles[index].position + particles[index].velocity * predictionFactor;
+        // Predict position using the actual time step
+        particles[index].predictedPosition = particles[index].position + particles[index].velocity * deltaTime;
     }
     else if (currentKernel == UpdateSpatialHashKernel) {
         startIndices[index] = numParticles; // Clear previous frame's start indices
@@ -239,6 +353,12 @@ void main() {
         vec3 dummyPressure = vec3(0.0);
         vec3 dummyViscosity = vec3(0.0);
         ProcessNeighbors(index, CalculateDensitiesKernel, dummyPressure, dummyViscosity, particles[index].density, particles[index].nearDensity, true);
+    // Boundary compensation to avoid density loss near walls
+    ApplyBoundaryDensityCompensation(particles[index].predictedPosition, particles[index].density, particles[index].nearDensity);
+    // Small base density to avoid singularities
+    particles[index].density += 0.05;
+    particles[index].nearDensity += 0.005;
+        
         particles[index].pressure = (particles[index].density - targetDensity) * pressureMultiplier;
         particles[index].nearPressure = particles[index].nearDensity * nearPressureMultiplier;
     }
@@ -248,6 +368,8 @@ void main() {
         float dummyDensity = 0.0;
         float dummyNearDensity = 0.0;
         ProcessNeighbors(index, CalculatePressureForcesKernel, pressureForce, dummyViscosity, dummyDensity, dummyNearDensity, false);
+        // Add boundary inward pressure to counteract density loss near walls
+        ApplyBoundaryPressureForce(particles[index].predictedPosition, pressureForce);
 
         // Apply pressure forces
         float currentDensity = max(particles[index].density, 0.01);
@@ -263,8 +385,11 @@ void main() {
         particles[index].velocity += viscosityForce * viscosityStrength * deltaTime;
     }
     else if (currentKernel == UpdatePositionsKernel) {
-        // Add velocity damping to help particles settle
-        particles[index].velocity *= 0.995;
+        // Reduced velocity damping to allow better gap filling
+        particles[index].velocity *= 0.998;
+
+    // Enforce no-normal-flow close to boundaries (Dirichlet BC)
+    EnforceNoNormalFlowNearWalls(particles[index].position, particles[index].velocity);
 
         // Update positions
         vec3 newPosition = particles[index].position + particles[index].velocity * deltaTime;

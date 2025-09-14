@@ -41,6 +41,17 @@ struct GPUSimulationSettings {
     glm::vec3 boundsSize = glm::vec3(20, 20, 20);
     float boundaryForceMultiplier = 120.0f;
     float boundaryForceDistance = 1.0f;
+    // Boundary tuning parameters for improved near-wall behavior
+    // Thickness of boundary layer as factor of smoothingRadius (typical 0.5..0.8)
+    float boundaryLayerFactor = 0.6f;
+    // Strength for damping normal velocity near walls (0..1)
+    float boundaryNormalDamp = 0.7f;
+    // Scale for mirror-density compensation (0..1)
+    float boundaryMirrorScale = 0.6f;
+    // Scale for near-density mirror compensation (0..1)
+    float boundaryNearMirrorScale = 0.3f;
+    // Scale for additional inward boundary pressure (0 disables)
+    float boundaryPressureScale = 0.0f;
 };
 
 class GPUFluidSimulation {
