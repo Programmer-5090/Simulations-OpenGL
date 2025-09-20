@@ -81,6 +81,26 @@ public:
         if (ptr) {
             std::memcpy(data.data(), ptr, count * sizeof(T));
             glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+            
+            // Debug: Check if we're reading the right stride
+            static bool debugOnce = true;
+            if (debugOnce) {
+                debugOnce = false;
+                std::cout << "ComputeHelper::ReadBuffer debug:" << std::endl;
+                std::cout << "  Requested count: " << count << std::endl;
+                std::cout << "  sizeof(T): " << sizeof(T) << " bytes" << std::endl;
+                std::cout << "  Total bytes read: " << count * sizeof(T) << std::endl;
+                
+                // Show raw bytes of first few structs
+                unsigned char* rawPtr = static_cast<unsigned char*>(ptr);
+                for (int i = 0; i < std::min(static_cast<size_t>(3), count); i++) {
+                    std::cout << "  Struct " << i << " raw bytes: ";
+                    for (int j = 0; j < sizeof(T) && j < 32; j++) {
+                        printf("%02X ", rawPtr[i * sizeof(T) + j]);
+                    }
+                    std::cout << std::endl;
+                }
+            }
         }
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         return data;

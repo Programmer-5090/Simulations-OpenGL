@@ -4,7 +4,8 @@
 #include <vector>
 #include "GPUSort.h"
 
-// Note: std430 layout requires vec3 to be aligned to 16 bytes.
+// Note: std430 layout requires proper alignment for GPU compatibility.
+// Each vec3 must be followed by padding to align to 16-byte boundaries.
 struct GPUParticle {
     glm::vec3 position;
     float _padding1;        // Explicit padding to align to 16 bytes
@@ -16,11 +17,20 @@ struct GPUParticle {
     float nearDensity;
     float pressure;
     float nearPressure;
+    uint32_t isBoundary;    // 1 if particle is a boundary particle, else 0
+    float _padding4;        // Padding to align the entire struct to 16 bytes
+    float _padding5;        // Additional padding for alignment
+    float _padding6;        // Additional padding for alignment
 
     GPUParticle() : position(0), _padding1(0), velocity(0), _padding2(0), 
                    predictedPosition(0), _padding3(0),
-                   density(0), nearDensity(0), pressure(0), nearPressure(0) {}
+                   density(0), nearDensity(0), pressure(0), nearPressure(0), 
+                   isBoundary(0), _padding4(0), _padding5(0), _padding6(0) {}
 };
+
+// std430 layout in the compute shader packs this struct to 80 bytes (5 x 16B).
+// Enforce this at compile time so buffer strides always match the GPU side.
+static_assert(sizeof(GPUParticle) == 80, "GPUParticle must be 80 bytes to match GLSL std430 layout");
 
 struct SpatialLookup {
     uint32_t particleIndex;
@@ -41,22 +51,19 @@ struct GPUSimulationSettings {
     glm::vec3 boundsSize = glm::vec3(20, 20, 20);
     float boundaryForceMultiplier = 120.0f;
     float boundaryForceDistance = 1.0f;
-    // Boundary tuning parameters for improved near-wall behavior
-    // Thickness of boundary layer as factor of smoothingRadius (typical 0.5..0.8)
-    float boundaryLayerFactor = 0.6f;
-    // Strength for damping normal velocity near walls (0..1)
-    float boundaryNormalDamp = 0.7f;
-    // Scale for mirror-density compensation (0..1)
-    float boundaryMirrorScale = 0.6f;
-    // Scale for near-density mirror compensation (0..1)
-    float boundaryNearMirrorScale = 0.3f;
-    // Scale for additional inward boundary pressure (0 disables)
-    float boundaryPressureScale = 0.0f;
+    
+    // Boundary particle settings
+    float boundarySpacing = 0.5f;       // Spacing between boundary particles within a layer
+    float layerSpacing = 0.3f;          // Distance between layers (typically particle diameter)
+    int boundaryLayers = 2;             // Number of layers of boundary particles
+    bool enableBoundaryParticles = true; // Enable/disable boundary particles
 };
 
 class GPUFluidSimulation {
 private:
-    int numParticles;
+    int numFluidParticles;
+    int numBoundaryParticles;
+    int numTotalParticles;
     GPUSimulationSettings settings;
 
     // Compute shader program
@@ -100,11 +107,15 @@ public:
     void SetSettings(const GPUSimulationSettings& newSettings);
 
     GLuint GetParticleBuffer() const { return particleBuffer; }
-    int GetNumParticles() const { return numParticles; }
+    int GetNumFluidParticles() const { return numFluidParticles; }
+    int GetNumBoundaryParticles() const { return numBoundaryParticles; }
+    int GetNumTotalParticles() const { return numTotalParticles; }
 
 private:
     bool InitializeGPU();
     void InitializeParticles();
+    void InitializeBoundaryParticles();
+    int CalculateNumBoundaryParticles() const;
     void UpdateConstants();
     void UpdateSpatialHashing();
     void CalculateStartIndices();

@@ -19,6 +19,9 @@ public:
 
     // Visually offset particle positions without affecting simulation physics
     void SetWorldOffset(const glm::vec3& offset) { worldOffset = offset; }
+    
+    // Toggle ghost particle visibility
+    void SetShowGhostParticles(bool show) { showGhostParticles = show; }
 
 private:
     void InitializeRenderingResources();
@@ -32,9 +35,11 @@ private:
 
     GLuint instanceVBO_positions; // VBO for instance positions
     GLuint instanceVBO_velocities; // VBO for instance velocities
+    GLuint instanceVBO_isBoundary; // VBO for boundary particle flags
     GLuint gradientTexture;
 
     glm::vec3 worldOffset = glm::vec3(0.0f);
+    bool showGhostParticles = true;  // Toggle for ghost particle visibility
 };
 
 #endif // GPUPARTICLE_DISPLAY3D_H

@@ -17,6 +17,7 @@ static void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 
 static GPUFluidSimulation* g_fluidSim = nullptr;
+static bool showGhostParticles = true;  // Toggle for ghost particle visibility
 
 
 const unsigned int SCR_WIDTH = 1280;
@@ -77,7 +78,7 @@ int main() {
 
     GPUSimulationSettings settings;
     settings.gravity = -9.81f;
-    settings.smoothingRadius = 0.45f;
+    settings.smoothingRadius = 0.4f;
     settings.targetDensity = 630.0f;
     settings.pressureMultiplier = 288.0f;
     settings.nearPressureMultiplier = 2.25f;
@@ -86,15 +87,14 @@ int main() {
     settings.collisionDamping = 0.95f;  // Slightly less damping
     settings.boundaryForceMultiplier = 1.0f;
     settings.boundaryForceDistance = 0.5f;
-    // New boundary tuning parameters for better near-wall behavior
-    settings.boundaryLayerFactor = 1.0f;
-    settings.boundaryNormalDamp = 0.7f;
-    settings.boundaryMirrorScale = 1.0f;
-    settings.boundaryNearMirrorScale = 0.5f;
-    settings.boundaryPressureScale = 1.0f; // Disable additional inward pressure for now
     settings.timeScale = 0.9f;
     settings.iterationsPerFrame = 3;
-
+    
+   // Boundary particle settings
+    settings.enableBoundaryParticles = true;
+    settings.boundarySpacing = settings.smoothingRadius * 0.6f;  // Proper spacing for SPH
+    settings.layerSpacing = settings.smoothingRadius * 0.15f;   // Layer offset based on particle size
+    settings.boundaryLayers = 3;      // Number of layers of boundary particles
     const int numParticles = 10000;
     GPUFluidSimulation fluidSim(numParticles, settings);
     g_fluidSim = &fluidSim;
@@ -106,13 +106,17 @@ int main() {
     particleDisplay.SetWorldOffset(glm::vec3(0.0f, worldYOffset, 0.0f));
 
     std::cout << "3D GPU Fluid Simulation Started!" << std::endl;
-    std::cout << "Particles: " << numParticles << std::endl;
+    std::cout << "Fluid Particles: " << numParticles << std::endl;
+    std::cout << "Boundary Particles: " << fluidSim.GetNumBoundaryParticles() << std::endl;
+    std::cout << "Total Particles: " << fluidSim.GetNumTotalParticles() << std::endl;
     std::cout << "Bounds: " << settings.boundsSize.x << " x " << settings.boundsSize.y << " x " << settings.boundsSize.z << std::endl;
+    std::cout << "Boundary Spacing: " << settings.boundarySpacing << ", Layers: " << settings.boundaryLayers << std::endl;
     std::cout << "Controls:" << std::endl;
     std::cout << "  WASD: Move camera" << std::endl;
     std::cout << "  Mouse: Look around" << std::endl;
     std::cout << "  Space: Pause/Resume" << std::endl;
     std::cout << "  R: Reset simulation" << std::endl;
+    std::cout << "  G: Toggle ghost particle visibility" << std::endl;
     std::cout << "  ESC: Exit" << std::endl;
 
     while (!glfwWindowShouldClose(window)) {
@@ -134,9 +138,9 @@ int main() {
                 glm::vec3 halfBounds = settings.boundsSize * 0.5f;
                 
                 for (const auto& particle : particles) {
-                    if (abs(particle.position.x) > halfBounds.x || 
+                    if ((abs(particle.position.x) > halfBounds.x || 
                         abs(particle.position.y) > halfBounds.y || 
-                        abs(particle.position.z) > halfBounds.z) {
+                        abs(particle.position.z) > halfBounds.z) && particle.isBoundary != 1) {
                         escapedCount++;
                     }
                 }
@@ -187,6 +191,7 @@ int main() {
         particleShader.setMat4("view", view);
         particleShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
         particleShader.setVec3("viewPos", camera.Position);
+        particleDisplay.SetShowGhostParticles(showGhostParticles);
         particleDisplay.Render(view, projection);
 
         glfwSwapBuffers(window);
@@ -233,6 +238,18 @@ static void processInput(GLFWwindow *window)
         rKeyPressed = true;
     } else {
         rKeyPressed = false;
+    }
+    
+    // Toggle ghost particle visibility with G key
+    static bool gKeyPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
+        if (!gKeyPressed) {
+            showGhostParticles = !showGhostParticles;
+            std::cout << "Ghost particles " << (showGhostParticles ? "visible" : "hidden") << std::endl;
+        }
+        gKeyPressed = true;
+    } else {
+        gKeyPressed = false;
     }
 }
 

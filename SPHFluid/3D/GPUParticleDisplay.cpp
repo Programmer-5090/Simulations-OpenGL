@@ -7,7 +7,7 @@
 
 GPUParticleDisplay::GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader)
     : simulation(sim), particleShader(shader),
-      instanceVBO_positions(0), instanceVBO_velocities(0), gradientTexture(0) {
+      instanceVBO_positions(0), instanceVBO_velocities(0), instanceVBO_isBoundary(0), gradientTexture(0) {
     
     particleMesh = new Sphere(1.0f, 16);
     particleRenderMesh = new Mesh(particleMesh->toMesh());
@@ -18,6 +18,7 @@ GPUParticleDisplay::~GPUParticleDisplay() {
     delete particleMesh;
     if (instanceVBO_positions) glDeleteBuffers(1, &instanceVBO_positions);
     if (instanceVBO_velocities) glDeleteBuffers(1, &instanceVBO_velocities);
+    if (instanceVBO_isBoundary) glDeleteBuffers(1, &instanceVBO_isBoundary);
     if (gradientTexture) glDeleteTextures(1, &gradientTexture);
     if (particleRenderMesh) delete particleRenderMesh;
 }
@@ -25,13 +26,19 @@ GPUParticleDisplay::~GPUParticleDisplay() {
 void GPUParticleDisplay::InitializeRenderingResources() {
     CreateGradientTexture();
 
+    int numTotalParticles = simulation->GetNumTotalParticles();
+
     glGenBuffers(1, &instanceVBO_positions);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
-    glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, numTotalParticles * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
     
     glGenBuffers(1, &instanceVBO_velocities);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
-    glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, numTotalParticles * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
+    
+    glGenBuffers(1, &instanceVBO_isBoundary);
+    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_isBoundary);
+    glBufferData(GL_ARRAY_BUFFER, numTotalParticles * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
     glBindVertexArray(particleRenderMesh->getVAO());
 
@@ -44,6 +51,11 @@ void GPUParticleDisplay::InitializeRenderingResources() {
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
     glVertexAttribDivisor(3, 1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_isBoundary);
+    glEnableVertexAttribArray(4);
+    glVertexAttribIPointer(4, 1, GL_UNSIGNED_INT, sizeof(uint32_t), (void*)0);
+    glVertexAttribDivisor(4, 1);
 
     glBindVertexArray(0);
 }
@@ -103,30 +115,33 @@ void GPUParticleDisplay::Update() {
 }
 
 void GPUParticleDisplay::UpdateInstanceData() {
-
+    // DIRECT SSBO APPROACH - Use the simulation buffer directly as instance data
     GLuint simBuffer = simulation->GetParticleBuffer();
-    int numParticles = simulation->GetNumParticles();
-    if (numParticles <= 0) return;
+    int numTotalParticles = simulation->GetNumTotalParticles();
+    if (numTotalParticles <= 0) return;
     
-    // Read the particle data from GPU
-    std::vector<GPUParticle> particles = simulation->GetParticles();
+    // Bind the simulation SSBO directly as instance attribute data
+    glBindVertexArray(particleRenderMesh->getVAO());
     
-    // Extract positions and velocities into separate arrays
-    std::vector<glm::vec3> positions(numParticles);
-    std::vector<glm::vec3> velocities(numParticles);
+    // Bind simulation buffer as instance data source
+    glBindBuffer(GL_ARRAY_BUFFER, simBuffer);
     
-    for (int i = 0; i < numParticles; ++i) {
-        positions[i] = particles[i].position + worldOffset;
-        velocities[i] = particles[i].velocity;
-    }
-
-    // Upload positions
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, numParticles * sizeof(glm::vec3), positions.data());
+    // Position attribute (location 2) - offset 0, stride 80
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 80, (void*)0);
+    glVertexAttribDivisor(2, 1);
     
-    // Upload velocities  
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, numParticles * sizeof(glm::vec3), velocities.data());
+    // Velocity attribute (location 3) - offset 16, stride 80  
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 80, (void*)16);
+    glVertexAttribDivisor(3, 1);
+    
+    // Boundary flag attribute (location 4) - offset 64, stride 80
+    glEnableVertexAttribArray(4);
+    glVertexAttribIPointer(4, 1, GL_UNSIGNED_INT, 80, (void*)64);
+    glVertexAttribDivisor(4, 1);
+    
+    glBindVertexArray(0);
 }
 
 void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projection) {
@@ -140,19 +155,38 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     particleShader->setMat4("model", model);
     particleShader->setMat4("view", view);
     particleShader->setMat4("projection", projection);
+    
+    // Pass world offset to shader
+    particleShader->setVec3("worldOffset", worldOffset);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_1D, gradientTexture);
     particleShader->setInt("ColourMap", 0);
     particleShader->setFloat("velocityMax", 15.0f);
 
-        // Use the Mesh drawing interface (instanced draw via raw GL call)
-        if (particleRenderMesh) {
-            glBindVertexArray(particleRenderMesh->getVAO());
-            GLsizei indexCount = static_cast<GLsizei>(particleRenderMesh->getIndexCount());
-            if (indexCount > 0) {
-                glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, static_cast<GLsizei>(simulation->GetNumParticles()));
+    // Enable blending for transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Use the Mesh drawing interface (instanced draw via raw GL call)
+    if (particleRenderMesh) {
+        glBindVertexArray(particleRenderMesh->getVAO());
+        GLsizei indexCount = static_cast<GLsizei>(particleRenderMesh->getIndexCount());
+        if (indexCount > 0) {
+            int numFluidParticles = simulation->GetNumFluidParticles();
+            int numTotalParticles = simulation->GetNumTotalParticles();
+            
+            if (showGhostParticles) {
+                // Render all particles (fluid + ghost)
+                glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, static_cast<GLsizei>(numTotalParticles));
+            } else {
+                // Render only fluid particles
+                glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, static_cast<GLsizei>(numFluidParticles));
             }
-            glBindVertexArray(0);
         }
+        glBindVertexArray(0);
+    }
+
+    // Disable blending
+    glDisable(GL_BLEND);
 }

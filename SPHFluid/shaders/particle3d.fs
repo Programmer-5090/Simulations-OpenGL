@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec3 FragPos;
 in vec3 Normal;
 in vec3 ParticleColor;
+flat in uint IsBoundary;
 
 uniform vec3 lightPos;
 uniform vec3 viewPos;
@@ -28,5 +29,8 @@ void main()
     vec3 specular = specularStrength * spec * vec3(1.0, 1.0, 1.0);
 
     vec3 result = (ambient + diffuse + specular) * ParticleColor;
-    FragColor = vec4(result, 1.0);
+    
+    // Make boundary particles semi-transparent
+    float alpha = (IsBoundary == 1u) ? 0.3 : 1.0;
+    FragColor = vec4(result, alpha);
 }
