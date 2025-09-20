@@ -164,15 +164,23 @@ void GPUFluidSimulation::InitializeBoundaryParticles() {
         glm::vec3 maxP = halfBounds + glm::vec3(layerOffset);
 
         auto steps = [spacing](float dim) {
-            return std::max(1, static_cast<int>(std::floor(dim / spacing)) + 1);
+            // Always cover both ends evenly
+            return std::max(2, static_cast<int>(std::ceil(dim / spacing)) + 1);
         };
+
+        auto interp = [](float minVal, float maxVal, int steps, int i) {
+            if (steps <= 1) return minVal; 
+            return minVal + (maxVal - minVal) * (static_cast<float>(i) / (steps - 1));
+        };
+
+
         int nx = steps(maxP.x - minP.x);
         int ny = steps(maxP.y - minP.y);
         int nz = steps(maxP.z - minP.z);
 
-        auto xi = [&](int i) { return minP.x + i * spacing; };
-        auto yi = [&](int i) { return minP.y + i * spacing; };
-        auto zi = [&](int i) { return minP.z + i * spacing; };
+        auto xi = [&](int i) { return interp(minP.x, maxP.x, nx, i); };
+        auto yi = [&](int i) { return interp(minP.y, maxP.y, ny, i); };
+        auto zi = [&](int i) { return interp(minP.z, maxP.z, nz, i); };
 
         // BOTTOM FACE ONLY (minP.y) - Full coverage
         for (int ix = 0; ix < nx; ++ix) {
