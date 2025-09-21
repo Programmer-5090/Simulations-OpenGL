@@ -57,6 +57,8 @@ struct GPUSimulationSettings {
     float layerSpacing = 0.3f;          // Distance between layers (typically particle diameter)
     int boundaryLayers = 2;             // Number of layers of boundary particles
     bool enableBoundaryParticles = true; // Enable/disable boundary particles
+    bool coverEdges = true;              // If true, include edge lines on all faces (duplicates allowed at seams)
+    bool includeTopFace = false;         // If true, also add a top face (lid)
 };
 
 class GPUFluidSimulation {
@@ -111,11 +113,18 @@ public:
     int GetNumBoundaryParticles() const { return numBoundaryParticles; }
     int GetNumTotalParticles() const { return numTotalParticles; }
 
+    // Debug: dump boundary particles grouped by layer index (shells offset by layerSpacing) to a txt file.
+    // 'axis' is only used as a label in the filename; maxLayers/maxPerLayer limit verbosity.
+    void DebugDumpBoundaryLayers(const char* tag, char axis, int maxLayers, int maxPerLayer) const;
+
 private:
     bool InitializeGPU();
     void InitializeParticles();
     void InitializeBoundaryParticles();
     int CalculateNumBoundaryParticles() const;
+    void AddCornerParticles(std::vector<GPUParticle>& particles, 
+                            int& boundaryIndex, int layer, float offset,
+                            const glm::vec3& baseMin, const glm::vec3& baseMax);
     void UpdateConstants();
     void UpdateSpatialHashing();
     void CalculateStartIndices();

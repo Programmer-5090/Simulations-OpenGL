@@ -10,6 +10,7 @@
 #include "BoundingBox.h"
 #include "camera.h"
 #include <iostream>
+#include <cstdio>
 
 static void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 static void processInput(GLFWwindow* window);
@@ -128,6 +129,14 @@ int main() {
 
         if (!paused) {
             fluidSim.Update(deltaTime);
+            // Periodic debug dump of boundary particles after manipulation
+            static int dumpFrame = 0;
+            dumpFrame++;
+            if (dumpFrame % 180 == 0) { // roughly every 3 seconds at 60 FPS
+                char tag[64];
+                snprintf(tag, sizeof(tag), "after_update_f%06d", dumpFrame);
+                fluidSim.DebugDumpBoundaryLayers(tag, 'y', 10, 25);
+            }
             
             // Debug: Check if particles are staying in bounds
             static int frameCounter = 0;

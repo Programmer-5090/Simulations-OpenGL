@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 
 GPUFluidSimulation::GPUFluidSimulation(int numParticles, const GPUSimulationSettings& settings)
     : numFluidParticles(numParticles), settings(settings), numBoundaryParticles(0), numTotalParticles(numParticles),
@@ -101,45 +104,133 @@ void GPUFluidSimulation::InitializeParticles() {
     gpuSort.SetBuffers(spatialLookupBuffer, startIndicesBuffer);
 }
 
+void GPUFluidSimulation::AddCornerParticles(std::vector<GPUParticle>& particles, 
+                                           int& boundaryIndex, int layer, float offset,
+                                           const glm::vec3& baseMin, const glm::vec3& baseMax) {
+    
+    // Only add corner particles for layers beyond the base layer
+    if (layer == 0) return;
+    
+    // Define the 8 corner base positions
+    std::vector<glm::vec3> cornerPositions = {
+        glm::vec3(baseMin.x, baseMin.y, baseMin.z), // bottom-left-front
+        glm::vec3(baseMax.x, baseMin.y, baseMin.z), // bottom-right-front
+        glm::vec3(baseMin.x, baseMin.y, baseMax.z), // bottom-left-back
+        glm::vec3(baseMax.x, baseMin.y, baseMax.z), // bottom-right-back
+        glm::vec3(baseMin.x, baseMax.y, baseMin.z), // top-left-front
+        glm::vec3(baseMax.x, baseMax.y, baseMin.z), // top-right-front
+        glm::vec3(baseMin.x, baseMax.y, baseMax.z), // top-left-back
+        glm::vec3(baseMax.x, baseMax.y, baseMax.z)  // top-right-back
+    };
+    
+    // Corresponding corner directions (outward from center)
+    std::vector<glm::vec3> cornerDirections = {
+        glm::vec3(-1, -1, -1), glm::vec3(1, -1, -1),
+        glm::vec3(-1, -1,  1), glm::vec3(1, -1,  1),
+        glm::vec3(-1,  1, -1), glm::vec3(1,  1, -1),
+        glm::vec3(-1,  1,  1), glm::vec3(1,  1,  1)
+    };
+    
+    for (int i = 0; i < 8; ++i) {
+        // Skip top corners if no top face
+        if (!settings.includeTopFace && cornerDirections[i].y > 0) continue;
+        
+        glm::vec3 baseCorner = cornerPositions[i];
+        glm::vec3 cornerDir = cornerDirections[i];
+        
+        // For each layer, add particles extending outward along each axis
+        for (int axisStep = 1; axisStep <= layer; ++axisStep) {
+            float stepDistance = settings.boundarySpacing * axisStep;
+            
+            // Add particle along X axis from corner
+            if (boundaryIndex < numTotalParticles) {
+                glm::vec3 pos = baseCorner + glm::vec3(cornerDir.x * (offset + stepDistance), cornerDir.y * offset, cornerDir.z * offset);
+                particles[boundaryIndex].position = pos;
+                particles[boundaryIndex].velocity = glm::vec3(0.0f);
+                particles[boundaryIndex].predictedPosition = pos;
+                particles[boundaryIndex].density = settings.targetDensity;
+                particles[boundaryIndex].isBoundary = 1;
+                ++boundaryIndex;
+            }
+            
+            // Add particle along Y axis from corner
+            if (boundaryIndex < numTotalParticles) {
+                glm::vec3 pos = baseCorner + glm::vec3(cornerDir.x * offset, cornerDir.y * (offset + stepDistance), cornerDir.z * offset);
+                particles[boundaryIndex].position = pos;
+                particles[boundaryIndex].velocity = glm::vec3(0.0f);
+                particles[boundaryIndex].predictedPosition = pos;
+                particles[boundaryIndex].density = settings.targetDensity;
+                particles[boundaryIndex].isBoundary = 1;
+                ++boundaryIndex;
+            }
+            
+            // Add particle along Z axis from corner
+            if (boundaryIndex < numTotalParticles) {
+                glm::vec3 pos = baseCorner + glm::vec3(cornerDir.x * offset, cornerDir.y * offset, cornerDir.z * (offset + stepDistance));
+                particles[boundaryIndex].position = pos;
+                particles[boundaryIndex].velocity = glm::vec3(0.0f);
+                particles[boundaryIndex].predictedPosition = pos;
+                particles[boundaryIndex].density = settings.targetDensity;
+                particles[boundaryIndex].isBoundary = 1;
+                ++boundaryIndex;
+            }
+        }
+    }
+}
+
+// Update the particle count calculation accordingly
 int GPUFluidSimulation::CalculateNumBoundaryParticles() const {
     if (!settings.enableBoundaryParticles || settings.boundaryLayers <= 0) {
         return 0;
     }
 
+    // Base inner bounds (no growth per layer for tangential directions)
     glm::vec3 halfBounds = settings.boundsSize * 0.5f;
     float spacing = settings.boundarySpacing;
-    int layers = settings.boundaryLayers;
-    
-    // Calculate particles for each face using integer, index-based counts
-    int totalBoundaryParticles = 0;
-    for (int layer = 0; layer < layers; layer++) {
-        // Each layer extends outward by layerSpacing (not boundarySpacing * layer)
-        float layerOffset = settings.layerSpacing * static_cast<float>(layer);
 
-        // Expanded extents for this layer
-        float xDim = 2.0f * (halfBounds.x + layerOffset);
-        float yDim = 2.0f * (halfBounds.y + layerOffset);
-        float zDim = 2.0f * (halfBounds.z + layerOffset);
+    auto steps = [spacing](float dim) {
+        // Inclusive sampling along the dimension with given spacing
+        return std::max(2, static_cast<int>(std::ceil(dim / spacing)) + 1);
+    };
 
-        auto steps = [spacing](float dim) {
-            // Inclusive sampling along the dimension with given spacing
-            return std::max(1, static_cast<int>(std::floor(dim / spacing)) + 1);
-        };
-        int nx = steps(xDim);
-        int ny = steps(yDim);
-        int nz = steps(zDim);
+    int nx = steps(2.0f * halfBounds.x);
+    int ny = steps(2.0f * halfBounds.y);
+    int nz = steps(2.0f * halfBounds.z);
 
-        // +/-X faces (YZ planes)
-        totalBoundaryParticles += 2 * (ny * nz);
-        // +/-Y faces (XZ planes) excluding edges already counted by X faces
-        int nx_in = std::max(0, nx - 2);
-        totalBoundaryParticles += 2 * (nx_in * nz);
-        // +/-Z faces (XY planes) excluding edges already counted by X and Y faces
-        int ny_in = std::max(0, ny - 2);
-        totalBoundaryParticles += 2 * (nx_in * ny_in);
+    // Per-layer counts using fixed base grid
+    int bottomCount = nx * nz; // full bottom
+    int topCount = settings.includeTopFace ? nx * nz : 0;
+
+    // X walls (YZ planes)
+    int xWallRows = std::max(0, ny - 1); // exclude bottom row by default
+    int xWallsCount = 2 * xWallRows * nz;
+    if (settings.coverEdges) {
+        // include bottom row edges on X walls to cover seams (duplicates OK)
+        xWallsCount += 2 * nz; // add iy=0 row for both X- and X+
     }
 
-    return totalBoundaryParticles;
+    // Z walls (XY planes)
+    int zWallCols = settings.coverEdges ? nx : std::max(0, nx - 2); // include edges if coverEdges
+    int zWallRows = std::max(0, ny - 1); // exclude bottom row by default
+    int zWallsCount = 2 * zWallCols * zWallRows;
+    if (settings.coverEdges) {
+        // also include the bottom row on Z walls
+        zWallsCount += 2 * zWallCols;
+    }
+
+    int perLayer = bottomCount + topCount + xWallsCount + zWallsCount;
+
+    // Calculate corner particles - much simpler now
+    int cornerParticles = 0;
+    if (settings.boundaryLayers > 1) {
+        for (int layer = 1; layer < settings.boundaryLayers; ++layer) {
+            int cornersUsed = settings.includeTopFace ? 8 : 4; // 8 corners total, 4 if no top face
+            int particlesPerCorner = 3 * layer; // 3 axes * layer steps
+            cornerParticles += cornersUsed * particlesPerCorner;
+        }
+    }
+    
+    return perLayer * settings.boundaryLayers + cornerParticles;
 }
 
 void GPUFluidSimulation::InitializeBoundaryParticles() {
@@ -153,40 +244,38 @@ void GPUFluidSimulation::InitializeBoundaryParticles() {
     glm::vec3 halfBounds = settings.boundsSize * 0.5f;
     float spacing = settings.boundarySpacing;
     int layers = settings.boundaryLayers;
-    
+
+    // Base (inner) bounds used for tangential sampling
+    glm::vec3 baseMin = -halfBounds;
+    glm::vec3 baseMax = halfBounds;
+
+    auto steps = [spacing](float dim) {
+        return std::max(2, static_cast<int>(std::ceil(dim / spacing)) + 1);
+    };
+
+    int nx = steps(baseMax.x - baseMin.x);
+    int ny = steps(baseMax.y - baseMin.y);
+    int nz = steps(baseMax.z - baseMin.z);
+
+    auto interp = [](float minVal, float maxVal, int steps, int i) {
+        if (steps <= 1) return minVal;
+        return minVal + (maxVal - minVal) * (static_cast<float>(i) / (steps - 1));
+    };
+
+    auto xi = [&](int i) { return interp(baseMin.x, baseMax.x, nx, i); };
+    auto yi = [&](int i) { return interp(baseMin.y, baseMax.y, ny, i); };
+    auto zi = [&](int i) { return interp(baseMin.z, baseMax.z, nz, i); };
+
     int boundaryIndex = numFluidParticles; // Start placing boundary particles after fluid particles
-    
+
     for (int layer = 0; layer < layers; layer++) {
-        // Use consistent layer spacing - each layer is offset by layerSpacing
-        float layerOffset = settings.layerSpacing * static_cast<float>(layer);
+        float offset = settings.layerSpacing * static_cast<float>(layer);
 
-        glm::vec3 minP = -halfBounds - glm::vec3(layerOffset);
-        glm::vec3 maxP = halfBounds + glm::vec3(layerOffset);
-
-        auto steps = [spacing](float dim) {
-            // Always cover both ends evenly
-            return std::max(2, static_cast<int>(std::ceil(dim / spacing)) + 1);
-        };
-
-        auto interp = [](float minVal, float maxVal, int steps, int i) {
-            if (steps <= 1) return minVal; 
-            return minVal + (maxVal - minVal) * (static_cast<float>(i) / (steps - 1));
-        };
-
-
-        int nx = steps(maxP.x - minP.x);
-        int ny = steps(maxP.y - minP.y);
-        int nz = steps(maxP.z - minP.z);
-
-        auto xi = [&](int i) { return interp(minP.x, maxP.x, nx, i); };
-        auto yi = [&](int i) { return interp(minP.y, maxP.y, ny, i); };
-        auto zi = [&](int i) { return interp(minP.z, maxP.z, nz, i); };
-
-        // BOTTOM FACE ONLY (minP.y) - Full coverage
+        // Bottom face (Y-): full XZ grid, shifted along -Y by offset
         for (int ix = 0; ix < nx; ++ix) {
             for (int iz = 0; iz < nz; ++iz) {
                 if (boundaryIndex < numTotalParticles) {
-                    particles[boundaryIndex].position = glm::vec3(xi(ix), minP.y, zi(iz));
+                    particles[boundaryIndex].position = glm::vec3(xi(ix), baseMin.y - offset, zi(iz));
                     particles[boundaryIndex].velocity = glm::vec3(0.0f);
                     particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
                     particles[boundaryIndex].density = settings.targetDensity;
@@ -196,48 +285,38 @@ void GPUFluidSimulation::InitializeBoundaryParticles() {
             }
         }
 
-        // LEFT AND RIGHT WALLS (X-faces) - Exclude bottom row (already covered by bottom face)
-        int yStart = 1; // Start from y=1 to avoid overlap with bottom
-        for (int iy = yStart; iy < ny; ++iy) {
+        // Optional Top face (Y+): full XZ grid, shifted along +Y by offset
+        if (settings.includeTopFace) {
+            for (int ix = 0; ix < nx; ++ix) {
+                for (int iz = 0; iz < nz; ++iz) {
+                    if (boundaryIndex < numTotalParticles) {
+                        particles[boundaryIndex].position = glm::vec3(xi(ix), baseMax.y + offset, zi(iz));
+                        particles[boundaryIndex].velocity = glm::vec3(0.0f);
+                        particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
+                        particles[boundaryIndex].density = settings.targetDensity;
+                        particles[boundaryIndex].isBoundary = 1;
+                        ++boundaryIndex;
+                    }
+                }
+            }
+        }
+
+        // X walls (left/right): YZ grid; include bottom row if coverEdges, otherwise start at 1
+        int yStartX = settings.coverEdges ? 0 : 1;
+        for (int iy = yStartX; iy < ny; ++iy) {
             for (int iz = 0; iz < nz; ++iz) {
-                // Left wall (minP.x)
                 if (boundaryIndex < numTotalParticles) {
-                    particles[boundaryIndex].position = glm::vec3(minP.x, yi(iy), zi(iz));
+                    // Left (X-)
+                    particles[boundaryIndex].position = glm::vec3(baseMin.x - offset, yi(iy), zi(iz));
                     particles[boundaryIndex].velocity = glm::vec3(0.0f);
                     particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
                     particles[boundaryIndex].density = settings.targetDensity;
                     particles[boundaryIndex].isBoundary = 1;
                     ++boundaryIndex;
                 }
-                // Right wall (maxP.x)
                 if (boundaryIndex < numTotalParticles) {
-                    particles[boundaryIndex].position = glm::vec3(maxP.x, yi(iy), zi(iz));
-                    particles[boundaryIndex].velocity = glm::vec3(0.0f);
-                    particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
-                    particles[boundaryIndex].density = settings.targetDensity;
-                    particles[boundaryIndex].isBoundary = 1;
-                    ++boundaryIndex;
-                }
-            }
-        }
-
-        // FRONT AND BACK WALLS (Z-faces) - Exclude edges already covered by X-faces and bottom
-        int xStart = 1; // Exclude left/right edges
-        int xEnd = nx - 1; // Exclude left/right edges
-        for (int ix = xStart; ix < xEnd; ++ix) {
-            for (int iy = yStart; iy < ny; ++iy) { // Start from y=1 to exclude bottom
-                // Front wall (minP.z)
-                if (boundaryIndex < numTotalParticles) {
-                    particles[boundaryIndex].position = glm::vec3(xi(ix), yi(iy), minP.z);
-                    particles[boundaryIndex].velocity = glm::vec3(0.0f);
-                    particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
-                    particles[boundaryIndex].density = settings.targetDensity;
-                    particles[boundaryIndex].isBoundary = 1;
-                    ++boundaryIndex;
-                }
-                // Back wall (maxP.z)
-                if (boundaryIndex < numTotalParticles) {
-                    particles[boundaryIndex].position = glm::vec3(xi(ix), yi(iy), maxP.z);
+                    // Right (X+)
+                    particles[boundaryIndex].position = glm::vec3(baseMax.x + offset, yi(iy), zi(iz));
                     particles[boundaryIndex].velocity = glm::vec3(0.0f);
                     particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
                     particles[boundaryIndex].density = settings.targetDensity;
@@ -247,44 +326,109 @@ void GPUFluidSimulation::InitializeBoundaryParticles() {
             }
         }
 
-        // NOTE: No top face (maxP.y) - leaving it open like a container
+        // Z walls (front/back): XY grid; include x-edges if coverEdges; include bottom row if coverEdges
+        int xStartZ = settings.coverEdges ? 0 : 1;
+        int xEndZ = settings.coverEdges ? nx : (nx - 1);
+        int yStartZ = settings.coverEdges ? 0 : 1;
+        for (int ix = xStartZ; ix < xEndZ; ++ix) {
+            for (int iy = yStartZ; iy < ny; ++iy) {
+                if (boundaryIndex < numTotalParticles) {
+                    // Front (Z-)
+                    particles[boundaryIndex].position = glm::vec3(xi(ix), yi(iy), baseMin.z - offset);
+                    particles[boundaryIndex].velocity = glm::vec3(0.0f);
+                    particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
+                    particles[boundaryIndex].density = settings.targetDensity;
+                    particles[boundaryIndex].isBoundary = 1;
+                    ++boundaryIndex;
+                }
+                if (boundaryIndex < numTotalParticles) {
+                    // Back (Z+)
+                    particles[boundaryIndex].position = glm::vec3(xi(ix), yi(iy), baseMax.z + offset);
+                    particles[boundaryIndex].velocity = glm::vec3(0.0f);
+                    particles[boundaryIndex].predictedPosition = particles[boundaryIndex].position;
+                    particles[boundaryIndex].density = settings.targetDensity;
+                    particles[boundaryIndex].isBoundary = 1;
+                    ++boundaryIndex;
+                }
+            }
+        }
+        if (layer > 0) {
+            AddCornerParticles(particles, boundaryIndex, layer, offset, baseMin, baseMax);
+        }
     }
-    
+
     // Update the actual number of boundary particles created
     numBoundaryParticles = boundaryIndex - numFluidParticles;
-    
+
     std::cout << "Created " << numBoundaryParticles << " boundary particles in " << layers << " layer(s)" << std::endl;
     std::cout << "Container is open at the top (no ceiling)" << std::endl;
-    
-    // Debug: Show first few boundary particle positions
-    if (numBoundaryParticles > 0) {
-        std::cout << "First few boundary particles:" << std::endl;
-        for (int i = numFluidParticles; i < std::min(numFluidParticles + 10, numTotalParticles); i++) {
-            glm::vec3 pos = particles[i].position;
-            std::cout << "  Particle " << i << ": (" << pos.x << ", " << pos.y << ", " << pos.z 
-                      << ") isBoundary=" << particles[i].isBoundary << std::endl;
-        }
-        
-        // Show samples from different layers
-        std::cout << "Layer distribution analysis:" << std::endl;
-        std::map<float, std::vector<int>> layerMap;
-        for (int i = numFluidParticles; i < numTotalParticles; i++) {
-            if (particles[i].isBoundary == 1) {
-                float z = particles[i].position.z;
-                layerMap[z].push_back(i);
-            }
-        }
-        
-        int layerCount = 0;
-        for (auto& layer : layerMap) {
-            std::cout << "  Z=" << layer.first << " has " << layer.second.size() << " particles" << std::endl;
-            layerCount++;
-            if (layerCount >= 5) break; // Show first 5 distinct Z values
-        }
-    }
-    
+
     // Write updated particles back to GPU
     ComputeHelper::WriteBuffer(particleBuffer, particles);
+
+    // Debug dump after creation
+    DebugDumpBoundaryLayers("after_init", 'y', 10, 25);
+}
+
+
+void GPUFluidSimulation::DebugDumpBoundaryLayers(const char* tag, char axis, int maxLayers, int maxPerLayer) const {
+    // Read back particles from GPU
+    std::vector<GPUParticle> particles = ComputeHelper::ReadBuffer<GPUParticle>(particleBuffer, numTotalParticles);
+
+    float layerStep = (settings.layerSpacing > 0.0f) ? settings.layerSpacing : settings.boundarySpacing;
+    if (layerStep <= 0.0f) {
+        return;
+    }
+
+    glm::vec3 halfBounds = settings.boundsSize * 0.5f;
+    auto computeLayerIndex = [&](const GPUParticle& p) -> int {
+        float lx = (std::abs(p.position.x) - halfBounds.x) / layerStep;
+        float ly = (std::abs(p.position.y) - halfBounds.y) / layerStep;
+        float lz = (std::abs(p.position.z) - halfBounds.z) / layerStep;
+        int ix = static_cast<int>(std::round(lx));
+        int iy = static_cast<int>(std::round(ly));
+        int iz = static_cast<int>(std::round(lz));
+        int L = std::max(0, std::max(ix, std::max(iy, iz)));
+        return L;
+    };
+
+    std::map<int, std::vector<int>> layers; // layer index -> particle indices
+    for (int i = numFluidParticles; i < numTotalParticles; ++i) {
+        if (particles[i].isBoundary != 1u) continue;
+        int L = computeLayerIndex(particles[i]);
+        layers[L].push_back(i);
+    }
+
+    // Build filename
+    std::ostringstream name;
+    name << "boundary_dump_" << (tag ? tag : "dump") << "_axis_" << axis << ".txt";
+    std::ofstream ofs(name.str());
+    if (!ofs.is_open()) return;
+
+    ofs << "Boundary Layer Dump\n";
+    ofs << "Tag: " << (tag ? tag : "dump") << ", Axis: " << axis << "\n";
+    ofs << "Total particles: fluid=" << numFluidParticles << ", boundary=" << numBoundaryParticles
+        << ", total=" << numTotalParticles << "\n";
+    ofs << "Layer step (spacing): " << layerStep << "\n\n";
+
+    ofs << std::fixed << std::setprecision(6);
+
+    int layerPrinted = 0;
+    for (const auto& kv : layers) {
+        if (maxLayers > 0 && layerPrinted >= maxLayers) break;
+        int L = kv.first;
+        const auto& idxs = kv.second;
+        ofs << "Layer " << L << " — count=" << idxs.size() << "\n";
+        int printed = 0;
+        for (int idx : idxs) {
+            if (maxPerLayer > 0 && printed >= maxPerLayer) break;
+            const auto& p = particles[idx];
+            ofs << "  #" << idx << ": pos(" << p.position.x << ", " << p.position.y << ", " << p.position.z << ")";
+            ++printed;
+        }
+        ofs << "\n";
+        ++layerPrinted;
+    }
 }
 
 void GPUFluidSimulation::UpdateConstants() {
