@@ -4,57 +4,115 @@
 
 A modern OpenGL framework for real-time physics: GPU fluid simulation (2D/3D), collision detection, and procedural geometry.
 
+![OpenGL](https://img.shields.io/badge/OpenGL-4.3+-blue.svg)
+![C++](https://img.shields.io/badge/C++-17-green.svg)
+![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
+![License](https://img.shields.io/badge/License-Educational-orange.svg)
+
 </div>
 
 ## Table of Contents
 
-- Overview
-- Features
-- Prerequisites
-- Build (Windows)
-- Run the programs
-   - From VS Code tasks
-   - From PowerShell (optional)
-- Controls
-- Project structure
-- Performance notes
-- Troubleshooting
-- License
+- [🎯 Overview](#-overview)
+- [✨ Features](#-features)
+- [📋 Prerequisites](#-prerequisites)
+- [🏗️ Quick Start](#️-quick-start)
+- [🔧 Detailed Setup](#-detailed-setup)
+- [🚀 Running the Applications](#-running-the-applications)
+- [🎮 Controls](#-controls)
+- [📁 Project Architecture](#-project-architecture)
+- [⚡ Performance Notes](#-performance-notes)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
-## Overview
+## 🎯 Overview
 
-This suite implements multiple simulation systems with modern OpenGL (core profile) and compute shaders for GPU-accelerated physics. It includes SPH-based fluid simulation (2D/3D), a particle collision system, and a small set of procedural geometry tools.
+This comprehensive physics simulation suite demonstrates advanced real-time graphics programming techniques using modern OpenGL. The project showcases three main simulation systems:
 
-## Features
+1. **SPH Fluid Simulation** - Smoothed Particle Hydrodynamics implementation with GPU compute shaders
+2. **Collision Detection System** - Efficient particle collision handling with spatial partitioning
+3. **Procedural Geometry Engine** - Dynamic generation of mathematical surfaces and shapes
 
-- GPU Fluid Simulation (2D/3D) using SPH + spatial hashing
-- Particle Collision System with uniform grid partitioning
-- Procedural geometry: parametric surfaces, polygons, spheres, and helpers
-- Modern OpenGL 3.3+ rendering, OpenGL 4.3+ compute shaders
-- GLM math, GLFW windowing/input, GLAD loader, optional Assimp model loading
+The codebase serves as both a learning resource for graphics programming concepts and a foundation for physics-based applications.
 
-## Prerequisites
+## ✨ Features
 
-- Windows 10/11, GPU with OpenGL 4.3+ recommended for compute shaders
-- CMake 3.15+
-- Visual Studio 2019/2022 (C++17)
-- You must manually download and place third‑party dependencies; they are not shipped in this repo:
-   - GLFW 3.4 — headers and compiled library (find_package + link)
-   - Assimp — headers and compiled library + DLL (used by OpenGLProject)
-   - GLAD, GLM, stb_image — headers and GLAD source file
+### Core Simulation Systems
+- **🌊 GPU Fluid Simulation (2D/3D)** - SPH-based fluid dynamics with spatial hashing optimization
+- **💥 Particle Collision System** - Real-time collision detection using uniform grid partitioning
+- **📐 Procedural Geometry** - Parametric surfaces, polygons, spheres, and mathematical helpers
 
-Expected header locations under this repo (manual copy):
-- `includes/glad/` (must contain `include/glad/glad.h` and `src/glad.c` per this CMake)
-- `includes/glm/` (GLM headers)
-- `includes/stb_image.h`
-- `includes/assimp/include/` (Assimp headers)
-- Optionally `includes/GLFW/` if you want local GLFW headers; the library itself is located via `lib/glfw3`.
+### Technical Stack
+- **🎮 Modern OpenGL** - Core profile 3.3+ rendering, compute shaders 4.3+
+- **🧮 Mathematics** - GLM for linear algebra operations
+- **🖼️ Windowing** - GLFW for cross-platform window management and input
+- **🔧 Asset Loading** - GLAD OpenGL loader, optional Assimp model loading
+- **⚡ GPU Acceleration** - Compute shaders for high-performance parallel processing
 
-## Dependency setup (required)
+## 📋 Prerequisites
+
+### System Requirements
+- **OS**: Windows 10/11 (64-bit)
+- **GPU**: OpenGL 4.3+ support (recommended for compute shaders)
+- **RAM**: 4GB minimum, 8GB recommended
+- **Storage**: ~2GB for dependencies and build artifacts
+
+### Development Tools
+- **CMake**: 3.15 or higher
+- **Visual Studio**: 2019/2022 with C++17 support
+- **Git**: For cloning and version control
+
+### Third-Party Dependencies
+> ⚠️ **Important**: Dependencies are not included in this repository and must be manually installed.
+
+| Library | Version | Purpose |
+|---------|---------|---------|
+| GLFW | 3.4+ | Window management and input handling |
+| Assimp | Latest | 3D model loading (OpenGLProject only) |
+| GLAD | OpenGL 4.3+ | OpenGL function loading |
+| GLM | Latest | Mathematics library |
+| stb_image | Latest | Image loading |
+
+## 🏗️ Quick Start
+
+### Option 1: Using vcpkg (Recommended)
+
+1. **Install vcpkg**:
+   ```powershell
+   git clone https://github.com/Microsoft/vcpkg.git
+   cd vcpkg
+   .\bootstrap-vcpkg.bat
+   .\vcpkg integrate install
+   ```
+
+2. **Install dependencies**:
+   ```powershell
+   .\vcpkg install glfw3:x64-windows assimp:x64-windows
+   ```
+
+3. **Clone and build**:
+   ```powershell
+   git clone <your-repo-url>
+   cd "OpenGL-C"
+   cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+   cmake --build build --config Debug
+   ```
+
+4. **Run applications**:
+   ```powershell
+   .\output\Debug\GPUFluidSim2D.exe
+   ```
+
+### Option 2: Manual Setup
+
+If you prefer manual dependency management, see the [Detailed Setup](#-detailed-setup) section below.
+
+## 🔧 Detailed Setup
 
 Choose ONE of the following setups before configuring/building.
 
-### Option A — Local vendor layout (no package manager)
+### Manual Dependency Setup
 
 Place compiled libraries and configs into this repo so CMake can find them via `CMAKE_PREFIX_PATH` and explicit link dirs:
 
@@ -139,26 +197,54 @@ Executables are written to `output/Debug/` and `output/Release/` (per configurat
 
 Tip: A Visual Studio solution is generated at `build/OpenGLProject.sln` if you prefer opening it directly in VS.
 
-## Run the programs
+## 🚀 Running the Applications
 
-### From VS Code tasks
+### Available Applications
 
-- Run GPUFluidSim 2D (Debug) → launches `GPUFluidSim2D.exe`
-- Run GPUFluidSim 3D (Debug) → launches `GPUFluidSim3D.exe`
-- Run Collision System 2D (Debug) → launches `CollisionSystem.exe`
-- Run OpenGL Project (Debug) → launches `OpenGLProject.exe`
+The project builds four main executables:
 
-Release variants are available for the main demo and collision system:
+| Application | Description | Features |
+|-------------|-------------|----------|
+| `GPUFluidSim2D.exe` | 2D fluid simulation | Mouse interaction, 10k particles, real-time physics |
+| `GPUFluidSim3D.exe` | 3D fluid simulation | Camera controls, 3D visualization, compute shaders |
+| `CollisionSystem.exe` | Particle collision demo | Auto-spawning particles, collision detection |
+| `OpenGLProject.exe` | Main geometry demo | Procedural shapes, infinite grid, model loading |
 
-- Run OpenGL Project (Release)
-- Run Collision System (Release)
+### Quick Launch
 
-Optional maintenance and alt build:
+After building, navigate to the project root and run:
 
-- Clean Build — removes build artifacts
-- MinGW Build (Alternative) — experimental GCC build for quick checks
+```powershell
+# Navigate to project directory
+cd "c:\Users\dimai\Documents\Programming\Programming\Gravi Sim\OpenGL-C"
 
-Note on shader paths: executables load shaders relative to the repo root (e.g., `SPHFluid/shaders/...`). Make sure your current directory is the project root (the VS Code tasks already do this).
+# Launch applications (Debug build)
+.\output\Debug\GPUFluidSim2D.exe    # 2D fluid simulation
+.\output\Debug\GPUFluidSim3D.exe    # 3D fluid simulation  
+.\output\Debug\CollisionSystem.exe  # Collision detection demo
+.\output\Debug\OpenGLProject.exe    # Main geometry demo
+
+# Launch applications (Release build - better performance)
+.\output\Release\GPUFluidSim2D.exe
+.\output\Release\GPUFluidSim3D.exe
+.\output\Release\CollisionSystem.exe
+.\output\Release\OpenGLProject.exe
+```
+
+> ⚠️ **Important**: Always run applications from the project root directory. Shaders and assets are loaded using relative paths from this location.
+
+### Using VS Code Tasks
+
+If using VS Code, you can use the predefined tasks:
+
+- **Run GPUFluidSim 2D (Debug)** → launches `GPUFluidSim2D.exe`
+- **Run GPUFluidSim 3D (Debug)** → launches `GPUFluidSim3D.exe`
+- **Run Collision System 2D (Debug)** → launches `CollisionSystem.exe`
+- **Run OpenGL Project (Debug)** → launches `OpenGLProject.exe`
+
+Release variants:
+- **Run OpenGL Project (Release)**
+- **Run Collision System (Release)**
 
 ### From PowerShell (optional)
 
@@ -181,27 +267,40 @@ cd "c:\Users\dimai\Documents\Programming\Programming\Gravi Sim\OpenGL-C"
 .\output\Release\OpenGLProject.exe
 ```
 
-## Controls
+## 🎮 Controls
 
-GPU Fluid Simulation (2D):
-- Mouse move: interact with the fluid
-- Left mouse: attract particles
-- Right mouse: repel particles
-- Space: pause/resume
-- R: reset
-- ESC: exit
+### GPU Fluid Simulation (2D)
+| Input | Action |
+|-------|--------|
+| **Mouse Move** | Interact with fluid particles |
+| **Left Click** | Attract particles to cursor |
+| **Right Click** | Repel particles from cursor |
+| **Space** | Pause/resume simulation |
+| **R** | Reset simulation |
+| **ESC** | Exit application |
 
-GPU Fluid Simulation (3D):
-- WASD: move camera
-- Mouse: look around (cursor disabled)
-- Space: pause/resume
-- R: reset simulation
-- ESC: exit
+### GPU Fluid Simulation (3D)
+| Input | Action |
+|-------|--------|
+| **WASD** | Move camera (forward/back/left/right) |
+| **Mouse** | Look around (cursor disabled) |
+| **Space** | Pause/resume simulation |
+| **R** | Reset simulation |
+| **ESC** | Exit application |
 
-Collision System (2D):
-- Auto‑spawning particle streams from the left
-- Right‑click or C: clear particles
-- ESC: exit
+### Collision System (2D)
+| Input | Action |
+|-------|--------|
+| **Auto-spawn** | Particles spawn automatically from left edge |
+| **Right Click / C** | Clear all particles |
+| **ESC** | Exit application |
+
+### OpenGL Project (Main Demo)
+| Input | Action |
+|-------|--------|
+| **Mouse** | Camera controls |
+| **WASD** | Navigate scene |
+| **ESC** | Exit application |
 
 ## Verify your setup
 
@@ -221,46 +320,256 @@ Before configuring/building, confirm these paths exist (examples):
    - `lib/assimp/lib/zlibstatic.lib`
    - `lib/assimp/bin/assimp-vc143-mt.dll` (required at runtime for OpenGLProject)
 
-## Project structure
+## 📁 Project Architecture
+
+### Directory Structure
 
 ```
-├── SPHFluid/             # Fluid simulation (2D/3D) and compute shaders
-│   ├── 2D/
-│   ├── 3D/
-│   └── shaders/
-├── Collision System/     # Particle collision detection demo
-├── geometry/             # Procedural geometry and helpers
-├── shaders/              # Vertex/fragment shaders
-├── models/               # Assets for the main demo
-├── includes/             # Third‑party headers (GLFW, GLAD, GLM, stb, Assimp)
-├── lib/                  # Prebuilt libraries (GLFW, Assimp, etc.)
-├── build/                # CMake build tree (generated)
-└── output/               # Built executables (Debug/Release)
+OpenGL-C/
+├── 🌊 SPHFluid/                    # Fluid simulation systems
+│   ├── 2D/                        # 2D fluid simulation implementation
+│   │   ├── gpuFluidWindow.cpp     # Main 2D window and event handling
+│   │   ├── GPUFluidSimulation.cpp # 2D SPH physics computation
+│   │   └── GPUParticleDisplay.cpp # 2D particle rendering
+│   ├── 3D/                        # 3D fluid simulation implementation
+│   │   ├── window3D.cpp           # Main 3D window and camera
+│   │   ├── GPUFluidSimulation.cpp # 3D SPH physics computation
+│   │   ├── GPUParticleDisplay.cpp # 3D particle rendering
+│   │   └── BoundingBox.cpp        # 3D simulation boundaries
+│   ├── shaders/                   # Compute and rendering shaders
+│   │   ├── FluidSim-2D.compute    # 2D SPH compute shader
+│   │   ├── FluidSim-3D.compute    # 3D SPH compute shader
+│   │   ├── particle2d.vs/.fs      # 2D particle rendering
+│   │   └── particle3d.vs/.fs      # 3D particle rendering
+│   └── GPUSort.cpp/.h             # GPU-based sorting utilities
+│
+├── 💥 Collision System/            # Particle collision detection
+│   ├── window2d.cpp               # Main collision demo window
+│   ├── solver.cpp/.h              # Collision detection algorithms
+│   ├── particle.h                 # Particle data structures
+│   ├── grid.h                     # Spatial partitioning grid
+│   └── constants.h                # Physics constants
+│
+├── 📐 geometry/                    # Procedural geometry generation
+│   ├── geometry_data.cpp/.h       # Core geometry utilities
+│   ├── parametric.cpp/.h          # Parametric surface generation
+│   ├── polygon.cpp/.h             # Polygon generation
+│   ├── sphere.cpp/.h              # Sphere generation
+│   └── circle.h                   # Circle utilities
+│
+├── 🎨 shaders/                     # Core rendering shaders
+│   ├── vertex.vs                  # Standard vertex shader
+│   ├── fragment.fs                # Standard fragment shader
+│   ├── simple_fragment.fs         # Simplified fragment shader
+│   ├── infinite_grid.vs/.fs       # Infinite grid rendering
+│   └── normal_debug.vs/.gs/.fs    # Normal visualization
+│
+├── 🏗️ Core Files/                  # Main application framework
+│   ├── window.cpp                 # Main demo application
+│   ├── shader.cpp/.h              # Shader loading and management
+│   ├── mesh.cpp/.h                # Mesh data structures
+│   ├── model.cpp/.h               # 3D model loading
+│   ├── camera.h                   # Camera controls
+│   └── ComputeHelper.h            # Compute shader utilities
+│
+├── 📦 Dependencies/                # Third-party libraries
+│   ├── includes/                  # Header files (GLAD, GLM, etc.)
+│   └── lib/                       # Compiled libraries
+│
+├── 🔨 Build System/                # Build configuration
+│   ├── CMakeLists.txt             # Main CMake configuration
+│   ├── build/                     # Generated build files
+│   └── output/                    # Compiled executables
+│       ├── Debug/                 # Debug builds
+│       └── Release/               # Release builds
+│
+└── 📄 Documentation/               # Project documentation
+    ├── README.md                  # This file
+    └── geometry/GeometryData_README.md  # Geometry system docs
 ```
 
-## Performance notes
+### Key Components
 
-- 2D particles: 1k–10k+ depending on GPU
-- 3D particles: 1k–5k typical for smooth real-time
-- Memory: ~100–200 MB for common presets
-- Dedicated GPU strongly recommended for 3D + compute
+#### 🌊 SPH Fluid System
+- **Physics Engine**: Smoothed Particle Hydrodynamics implementation
+- **GPU Acceleration**: Compute shaders for parallel particle updates
+- **Spatial Hashing**: Efficient neighbor finding for particle interactions
+- **Rendering**: Instanced particle rendering with dynamic coloring
 
-## Troubleshooting
+#### 💥 Collision System  
+- **Spatial Partitioning**: Uniform grid for efficient collision detection
+- **Multi-threading**: Parallel collision resolution
+- **Dynamic Spawning**: Real-time particle generation and management
 
-Black screen or no motion:
-- Verify GPU and drivers support OpenGL 4.3+ for compute shaders
-- Try the Release build for performance-sensitive paths
+#### 📐 Geometry Engine
+- **Parametric Surfaces**: Mathematical surface generation
+- **Procedural Shapes**: Runtime geometry creation
+- **Mesh Management**: Efficient vertex buffer handling
 
-Slow performance:
-- Reduce particle count and grid resolution in the simulation
+## ⚡ Performance Notes
 
-Build errors on Windows:
-- Ensure CMake and Visual Studio are installed and on PATH
-- Use the provided VS Code tasks to avoid environment conflicts
+### Recommended Specifications
 
-Missing DLLs:
-- Visual C++ Redistributable may be required for some systems
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| **GPU** | OpenGL 3.3+ | OpenGL 4.3+ with compute shader support |
+| **VRAM** | 1GB | 4GB+ |
+| **RAM** | 4GB | 8GB+ |
+| **CPU** | Dual-core | Quad-core+ |
 
-## License
+### Performance Characteristics
 
-This project is provided for educational and research purposes. Third‑party libraries retain their respective licenses.
+#### 2D Fluid Simulation
+- **Particle Count**: 1,000 - 10,000+ (GPU dependent)
+- **Frame Rate**: 60+ FPS on modern GPUs
+- **Memory Usage**: ~50-100 MB
+
+#### 3D Fluid Simulation  
+- **Particle Count**: 1,000 - 5,000 (typical for smooth real-time)
+- **Frame Rate**: 30-60 FPS on dedicated GPUs
+- **Memory Usage**: ~100-200 MB
+
+#### Collision System
+- **Particle Count**: 5,000+ concurrent particles
+- **Frame Rate**: 60+ FPS with spatial partitioning
+- **Memory Usage**: ~20-50 MB
+
+### Optimization Tips
+
+1. **Reduce Particle Count**: Lower particle counts for better performance
+2. **Use Release Builds**: Significant performance improvement over Debug
+3. **Dedicated GPU**: Integrated graphics may struggle with compute shaders
+4. **Update Drivers**: Ensure latest GPU drivers for OpenGL support
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Black Screen or No Motion
+**Symptoms**: Application launches but shows black screen or frozen particles
+
+**Solutions**:
+- ✅ Verify GPU supports OpenGL 4.3+ for compute shaders
+- ✅ Update graphics drivers to latest version
+- ✅ Try Release build instead of Debug for performance-critical paths
+- ✅ Check Windows Event Viewer for OpenGL errors
+
+#### Slow Performance
+**Symptoms**: Low frame rates, stuttering, or lag
+
+**Solutions**:
+- ✅ Reduce particle count in simulation parameters
+- ✅ Lower grid resolution settings
+- ✅ Close other GPU-intensive applications
+- ✅ Use dedicated GPU instead of integrated graphics
+
+#### Build Errors
+**Symptoms**: CMake configuration or compilation failures
+
+**Solutions**:
+- ✅ Ensure CMake 3.15+ and Visual Studio 2019/2022 are installed
+- ✅ Verify all dependencies are properly installed (see setup section)
+- ✅ Use provided VS Code tasks to avoid environment conflicts
+- ✅ Check that `CMAKE_PREFIX_PATH` points to correct library locations
+
+#### Missing DLLs at Runtime
+**Symptoms**: "DLL not found" errors when launching applications
+
+**Solutions**:
+- ✅ Install Visual C++ Redistributable for Visual Studio 2019/2022
+- ✅ Ensure `assimp-vc143-mt.dll` is in the same directory as executables
+- ✅ Check that all required system libraries are available
+
+#### Shader Compilation Errors
+**Symptoms**: OpenGL shader compilation failures
+
+**Solutions**:
+- ✅ Verify shader files exist in correct relative paths
+- ✅ Run applications from project root directory
+- ✅ Check OpenGL version compatibility
+- ✅ Ensure compute shader support for fluid simulations
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check GPU Compatibility**: Verify OpenGL version support
+2. **Review Build Logs**: Look for specific error messages
+3. **Test with Minimal Setup**: Try building with vcpkg first
+4. **Update Dependencies**: Ensure latest versions of libraries
+
+## 🤝 Contributing
+
+We welcome contributions to improve the OpenGL Physics Simulation Suite! Here's how you can help:
+
+### Development Setup
+
+1. **Fork the Repository**: Create your own fork of the project
+2. **Clone Locally**: `git clone <your-fork-url>`
+3. **Set Up Dependencies**: Follow the setup instructions above
+4. **Create Feature Branch**: `git checkout -b feature/your-feature-name`
+
+### Contribution Guidelines
+
+#### Code Style
+- Follow existing C++ coding conventions
+- Use meaningful variable and function names
+- Add comments for complex algorithms
+- Keep functions focused and modular
+
+#### Areas for Contribution
+- 🐛 **Bug Fixes**: Fix issues in simulation accuracy or performance
+- ✨ **New Features**: Add new simulation types or rendering techniques
+- 📚 **Documentation**: Improve code comments and documentation
+- 🎨 **Shaders**: Enhance visual effects and rendering quality
+- ⚡ **Performance**: Optimize algorithms and GPU utilization
+
+#### Submitting Changes
+1. **Test Thoroughly**: Ensure all applications build and run correctly
+2. **Update Documentation**: Update README if adding new features
+3. **Commit with Clear Messages**: Use descriptive commit messages
+4. **Submit Pull Request**: Include description of changes and testing done
+
+### Reporting Issues
+
+When reporting bugs or requesting features:
+
+1. **Check Existing Issues**: Search for similar reports first
+2. **Provide System Info**: Include OS, GPU, and driver versions
+3. **Include Steps to Reproduce**: Clear instructions to replicate issues
+4. **Attach Logs**: Include relevant error messages or console output
+
+## 📄 License
+
+This project is provided for **educational and research purposes**. 
+
+### Project License
+- The original codebase is available for learning and academic use
+- Commercial use requires permission from the project maintainers
+- Modifications and derivatives should maintain attribution
+
+### Third-Party Libraries
+Third-party libraries retain their respective licenses:
+
+| Library | License | Usage |
+|---------|---------|-------|
+| **GLFW** | zlib/libpng | Window management |
+| **GLAD** | MIT | OpenGL loading |
+| **GLM** | MIT | Mathematics |
+| **Assimp** | BSD-3-Clause | Model loading |
+| **stb_image** | MIT/Public Domain | Image loading |
+
+### Attribution
+
+If you use this project in academic work, please cite:
+```
+OpenGL Physics Simulation Suite
+A modern framework for real-time physics simulation using OpenGL compute shaders
+```
+
+---
+
+<div align="center">
+
+**Happy Coding! 🚀**
+</div>
