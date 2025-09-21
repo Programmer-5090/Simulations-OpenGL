@@ -135,7 +135,7 @@ int main() {
             if (dumpFrame % 180 == 0) { // roughly every 3 seconds at 60 FPS
                 char tag[64];
                 snprintf(tag, sizeof(tag), "after_update_f%06d", dumpFrame);
-                fluidSim.DebugDumpBoundaryLayers(tag, 'y', 10, 25);
+                // fluidSim.DebugDumpBoundaryLayers(tag, 'y', 10, 25);
             }
             
             // Debug: Check if particles are staying in bounds
@@ -161,7 +161,6 @@ int main() {
         }
         particleDisplay.Update();
 
-    // Use same white background as the 2D window
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

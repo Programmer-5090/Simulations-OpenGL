@@ -269,9 +269,25 @@ void main() {
             // Boundary particles maintain target density to provide proper boundary conditions
             particles[index].density = targetDensity;
             particles[index].nearDensity = targetDensity * 0.2;
-            // Boundary particles generate pressure to "push" fluid particles away
-            particles[index].pressure = targetDensity * pressureMultiplier * 0.3; // Moderate boundary pressure
-            particles[index].nearPressure = particles[index].nearDensity * nearPressureMultiplier;
+            // Only apply boundary pressure if a fluid particle is within a certain distance
+            float minFluidDist = smoothingRadius * 0.35;
+            bool fluidNearby = false;
+            for (int i = 0; i < numParticles; ++i) {
+                if (particles[i].isBoundary == 0) {
+                    float dist = length(particles[i].predictedPosition - particles[index].predictedPosition);
+                    if (dist < minFluidDist) {
+                        fluidNearby = true;
+                        break;
+                    }
+                }
+            }
+            if (fluidNearby) {
+                particles[index].pressure = targetDensity * pressureMultiplier * 10.0; // Moderate boundary pressure
+                particles[index].nearPressure = particles[index].nearDensity * nearPressureMultiplier;
+            } else {
+                particles[index].pressure = 0.0;
+                particles[index].nearPressure = 0.0;
+            }
         } else {
             // Fluid particles get proper density calculation
             // Add small base density to avoid singularities
@@ -290,47 +306,47 @@ void main() {
             float dummyNearDensity = 0.0;
             ProcessNeighbors(index, CalculatePressureForcesKernel, pressureForce, dummyViscosity, dummyDensity, dummyNearDensity, false);
 
-            // // Add explicit boundary forces to enforce v·n ≥ 0 condition
-            // vec3 boundaryForce = vec3(0.0);
-            // vec3 halfBounds = boundsSize * 0.5;
-            // vec3 pos = particles[index].predictedPosition;
-            
-            // // Calculate distance to each boundary and apply repulsive force
-            // float boundaryDistance = smoothingRadius * 0.8; // Distance at which boundary forces activate
-            
-            // // X boundaries
-            // if (pos.x > halfBounds.x - boundaryDistance) {
-            //     float penetration = (pos.x - (halfBounds.x - boundaryDistance)) / boundaryDistance;
-            //     boundaryForce.x -= penetration * penetration * 500.0; // Push left
-            // }
-            // if (pos.x < -halfBounds.x + boundaryDistance) {
-            //     float penetration = ((-halfBounds.x + boundaryDistance) - pos.x) / boundaryDistance;
-            //     boundaryForce.x += penetration * penetration * 500.0; // Push right
-            // }
-            
-            // // Y boundaries  
-            // if (pos.y > halfBounds.y - boundaryDistance) {
-            //     float penetration = (pos.y - (halfBounds.y - boundaryDistance)) / boundaryDistance;
-            //     boundaryForce.y -= penetration * penetration * 500.0; // Push down
-            // }
-            // if (pos.y < -halfBounds.y + boundaryDistance) {
-            //     float penetration = ((-halfBounds.y + boundaryDistance) - pos.y) / boundaryDistance;
-            //     boundaryForce.y += penetration * penetration * 500.0; // Push up
-            // }
-            
-            // // Z boundaries
-            // if (pos.z > halfBounds.z - boundaryDistance) {
-            //     float penetration = (pos.z - (halfBounds.z - boundaryDistance)) / boundaryDistance;
-            //     boundaryForce.z -= penetration * penetration * 500.0; // Push back
-            // }
-            // if (pos.z < -halfBounds.z + boundaryDistance) {
-            //     float penetration = ((-halfBounds.z + boundaryDistance) - pos.z) / boundaryDistance;
-            //     boundaryForce.z += penetration * penetration * 500.0; // Push forward
-            // }
-
+            // Add explicit boundary forces to enforce v·n ≥ 0 condition
+            vec3 boundaryForce = vec3(0.0);
+            vec3 halfBounds = boundsSize * 0.5;
+            vec3 pos = particles[index].predictedPosition;
+    
+            // Calculate distance to each boundary and apply repulsive force
+            float boundaryDistance = smoothingRadius * 0.8; // Distance at which boundary forces activate
+    
+            // X boundaries
+            float wallThreshold = boundaryDistance * 0.3; // Only push if within 20% of boundaryDistance
+            if (pos.x > halfBounds.x - wallThreshold) {
+                float penetration = (pos.x - (halfBounds.x - wallThreshold)) / wallThreshold;
+                boundaryForce.x -= penetration * penetration * 20000.0;
+            }
+            if (pos.x < -halfBounds.x + wallThreshold) {
+                float penetration = ((-halfBounds.x + wallThreshold) - pos.x) / wallThreshold;
+                boundaryForce.x += penetration * penetration * 20000.0;
+            }
+    
+            // Y boundaries  
+            if (pos.y > halfBounds.y - wallThreshold) {
+                float penetration = (pos.y - (halfBounds.y - wallThreshold)) / wallThreshold;
+                boundaryForce.y -= penetration * penetration * 20000.0;
+            }
+            if (pos.y < -halfBounds.y + wallThreshold) {
+                float penetration = ((-halfBounds.y + wallThreshold) - pos.y) / wallThreshold;
+                boundaryForce.y += penetration * penetration * 20000.0;
+            }
+    
+            // Z boundaries
+            if (pos.z > halfBounds.z - wallThreshold) {
+                float penetration = (pos.z - (halfBounds.z - wallThreshold)) / wallThreshold;
+                boundaryForce.z -= penetration * penetration * 20000.0;
+            }
+            if (pos.z < -halfBounds.z + wallThreshold) {
+                float penetration = ((-halfBounds.z + wallThreshold) - pos.z) / wallThreshold;
+                boundaryForce.z += penetration * penetration * 20000.0;
+            }
             float currentDensity = max(particles[index].density, 0.01);
-            // vec3 totalAcceleration = (pressureForce + boundaryForce) / currentDensity;
-            vec3 totalAcceleration = (pressureForce) / currentDensity;
+            vec3 totalAcceleration = (pressureForce + boundaryForce) / currentDensity;
+            // vec3 totalAcceleration = (pressureForce) / currentDensity;
             particles[index].velocity += totalAcceleration * deltaTime;
         }
     }

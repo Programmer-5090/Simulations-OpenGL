@@ -104,80 +104,6 @@ void GPUFluidSimulation::InitializeParticles() {
     gpuSort.SetBuffers(spatialLookupBuffer, startIndicesBuffer);
 }
 
-void GPUFluidSimulation::AddCornerParticles(std::vector<GPUParticle>& particles, 
-                                           int& boundaryIndex, int layer, float offset,
-                                           const glm::vec3& baseMin, const glm::vec3& baseMax) {
-    
-    // Only add corner particles for layers beyond the base layer
-    if (layer == 0) return;
-    
-    // Define the 8 corner base positions
-    std::vector<glm::vec3> cornerPositions = {
-        glm::vec3(baseMin.x, baseMin.y, baseMin.z), // bottom-left-front
-        glm::vec3(baseMax.x, baseMin.y, baseMin.z), // bottom-right-front
-        glm::vec3(baseMin.x, baseMin.y, baseMax.z), // bottom-left-back
-        glm::vec3(baseMax.x, baseMin.y, baseMax.z), // bottom-right-back
-        glm::vec3(baseMin.x, baseMax.y, baseMin.z), // top-left-front
-        glm::vec3(baseMax.x, baseMax.y, baseMin.z), // top-right-front
-        glm::vec3(baseMin.x, baseMax.y, baseMax.z), // top-left-back
-        glm::vec3(baseMax.x, baseMax.y, baseMax.z)  // top-right-back
-    };
-    
-    // Corresponding corner directions (outward from center)
-    std::vector<glm::vec3> cornerDirections = {
-        glm::vec3(-1, -1, -1), glm::vec3(1, -1, -1),
-        glm::vec3(-1, -1,  1), glm::vec3(1, -1,  1),
-        glm::vec3(-1,  1, -1), glm::vec3(1,  1, -1),
-        glm::vec3(-1,  1,  1), glm::vec3(1,  1,  1)
-    };
-    
-    for (int i = 0; i < 8; ++i) {
-        // Skip top corners if no top face
-        if (!settings.includeTopFace && cornerDirections[i].y > 0) continue;
-        
-        glm::vec3 baseCorner = cornerPositions[i];
-        glm::vec3 cornerDir = cornerDirections[i];
-        
-        // For each layer, add particles extending outward along each axis
-        for (int axisStep = 1; axisStep <= layer; ++axisStep) {
-            float stepDistance = settings.boundarySpacing * axisStep;
-            
-            // Add particle along X axis from corner
-            if (boundaryIndex < numTotalParticles) {
-                glm::vec3 pos = baseCorner + glm::vec3(cornerDir.x * (offset + stepDistance), cornerDir.y * offset, cornerDir.z * offset);
-                particles[boundaryIndex].position = pos;
-                particles[boundaryIndex].velocity = glm::vec3(0.0f);
-                particles[boundaryIndex].predictedPosition = pos;
-                particles[boundaryIndex].density = settings.targetDensity;
-                particles[boundaryIndex].isBoundary = 1;
-                ++boundaryIndex;
-            }
-            
-            // Add particle along Y axis from corner
-            if (boundaryIndex < numTotalParticles) {
-                glm::vec3 pos = baseCorner + glm::vec3(cornerDir.x * offset, cornerDir.y * (offset + stepDistance), cornerDir.z * offset);
-                particles[boundaryIndex].position = pos;
-                particles[boundaryIndex].velocity = glm::vec3(0.0f);
-                particles[boundaryIndex].predictedPosition = pos;
-                particles[boundaryIndex].density = settings.targetDensity;
-                particles[boundaryIndex].isBoundary = 1;
-                ++boundaryIndex;
-            }
-            
-            // Add particle along Z axis from corner
-            if (boundaryIndex < numTotalParticles) {
-                glm::vec3 pos = baseCorner + glm::vec3(cornerDir.x * offset, cornerDir.y * offset, cornerDir.z * (offset + stepDistance));
-                particles[boundaryIndex].position = pos;
-                particles[boundaryIndex].velocity = glm::vec3(0.0f);
-                particles[boundaryIndex].predictedPosition = pos;
-                particles[boundaryIndex].density = settings.targetDensity;
-                particles[boundaryIndex].isBoundary = 1;
-                ++boundaryIndex;
-            }
-        }
-    }
-}
-
 // Update the particle count calculation accordingly
 int GPUFluidSimulation::CalculateNumBoundaryParticles() const {
     if (!settings.enableBoundaryParticles || settings.boundaryLayers <= 0) {
@@ -219,18 +145,8 @@ int GPUFluidSimulation::CalculateNumBoundaryParticles() const {
     }
 
     int perLayer = bottomCount + topCount + xWallsCount + zWallsCount;
-
-    // Calculate corner particles - much simpler now
-    int cornerParticles = 0;
-    if (settings.boundaryLayers > 1) {
-        for (int layer = 1; layer < settings.boundaryLayers; ++layer) {
-            int cornersUsed = settings.includeTopFace ? 8 : 4; // 8 corners total, 4 if no top face
-            int particlesPerCorner = 3 * layer; // 3 axes * layer steps
-            cornerParticles += cornersUsed * particlesPerCorner;
-        }
-    }
     
-    return perLayer * settings.boundaryLayers + cornerParticles;
+    return perLayer * settings.boundaryLayers;
 }
 
 void GPUFluidSimulation::InitializeBoundaryParticles() {
@@ -352,9 +268,6 @@ void GPUFluidSimulation::InitializeBoundaryParticles() {
                 }
             }
         }
-        if (layer > 0) {
-            AddCornerParticles(particles, boundaryIndex, layer, offset, baseMin, baseMax);
-        }
     }
 
     // Update the actual number of boundary particles created
@@ -367,7 +280,7 @@ void GPUFluidSimulation::InitializeBoundaryParticles() {
     ComputeHelper::WriteBuffer(particleBuffer, particles);
 
     // Debug dump after creation
-    DebugDumpBoundaryLayers("after_init", 'y', 10, 25);
+    // DebugDumpBoundaryLayers("after_init", 'y', 10, 25);
 }
 
 

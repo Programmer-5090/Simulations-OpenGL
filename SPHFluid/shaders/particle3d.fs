@@ -31,6 +31,6 @@ void main()
     vec3 result = (ambient + diffuse + specular) * ParticleColor;
     
     // Make boundary particles semi-transparent
-    float alpha = (IsBoundary == 1u) ? 0.3 : 1.0;
+    float alpha = (IsBoundary == 1u) ? 1.0 : 1.0;
     FragColor = vec4(result, alpha);
 }

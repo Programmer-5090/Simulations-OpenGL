@@ -122,9 +122,6 @@ private:
     void InitializeParticles();
     void InitializeBoundaryParticles();
     int CalculateNumBoundaryParticles() const;
-    void AddCornerParticles(std::vector<GPUParticle>& particles, 
-                            int& boundaryIndex, int layer, float offset,
-                            const glm::vec3& baseMin, const glm::vec3& baseMax);
     void UpdateConstants();
     void UpdateSpatialHashing();
     void CalculateStartIndices();

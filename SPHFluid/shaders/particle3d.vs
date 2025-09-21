@@ -30,8 +30,8 @@ void main()
     gl_Position = projection * view * vec4(FragPos, 1.0);
 
     if (aInstanceIsBoundary == 1u) {
-        // Boundary particles are transparent grey
-        ParticleColor = vec3(0.5, 0.5, 0.5);
+        // Boundary particles are red
+        ParticleColor = vec3(1.0, 0.0, 0.0);
     } else {
         // Fluid particles use velocity-based color
         float speed = length(aInstanceVelocity);
