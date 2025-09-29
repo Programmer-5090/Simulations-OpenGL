@@ -3,6 +3,7 @@
 #include "GPUFluidSimulation.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <cstddef> // for offsetof
 
 
 GPUParticleDisplay::GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader)
@@ -24,28 +25,31 @@ GPUParticleDisplay::~GPUParticleDisplay() {
 
 void GPUParticleDisplay::InitializeRenderingResources() {
     CreateGradientTexture();
-
-    glGenBuffers(1, &instanceVBO_positions);
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
-    glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
-    
-    glGenBuffers(1, &instanceVBO_velocities);
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
-    glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
+    // Instead of copying particle data back to CPU every frame, bind the
+    // GPU particle buffer directly as the source for instanced attributes.
+    // This avoids glMapBuffer/glGetBuffer stalls and eliminates CPU-GPU sync.
 
     glBindVertexArray(particleRenderMesh->getVAO());
 
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
+    GLuint simBuffer = simulation->GetParticleBuffer();
+    // Bind the same buffer as ARRAY_BUFFER to describe vertex attrib layout
+    glBindBuffer(GL_ARRAY_BUFFER, simBuffer);
+
+    GLsizei stride = static_cast<GLsizei>(sizeof(GPUParticle));
+
+    // position attribute (vec3) at offset offsetof(GPUParticle, position)
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GPUParticle, position));
     glVertexAttribDivisor(2, 1);
 
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
+    // velocity attribute (vec3) at offset offsetof(GPUParticle, velocity)
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GPUParticle, velocity));
     glVertexAttribDivisor(3, 1);
 
+    // Unbind to avoid accidental state leaks. The VAO stores the attribute bindings.
     glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void GPUParticleDisplay::CreateGradientTexture() {
@@ -103,34 +107,13 @@ void GPUParticleDisplay::Update() {
 }
 
 void GPUParticleDisplay::UpdateInstanceData() {
-
-    GLuint simBuffer = simulation->GetParticleBuffer();
-    int numParticles = simulation->GetNumParticles();
-    if (numParticles <= 0) return;
-    
-    // Read the particle data from GPU
-    std::vector<GPUParticle> particles = simulation->GetParticles();
-    
-    // Extract positions and velocities into separate arrays
-    std::vector<glm::vec3> positions(numParticles);
-    std::vector<glm::vec3> velocities(numParticles);
-    
-    for (int i = 0; i < numParticles; ++i) {
-        positions[i] = particles[i].position + worldOffset;
-        velocities[i] = particles[i].velocity;
-    }
-
-    // Upload positions
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_positions);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, numParticles * sizeof(glm::vec3), positions.data());
-    
-    // Upload velocities  
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_velocities);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, numParticles * sizeof(glm::vec3), velocities.data());
+    // No CPU-side readback required. Instance attributes read directly from
+    // the GPU particle buffer bound to the VAO. This function remains as a
+    // placeholder in case future CPU-side work is needed.
 }
 
 void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projection) {
-    Update(); // Efficiently copy data on GPU before rendering
+    Update(); // No-op now; retained for compatibility
 
     particleShader->use();
 
@@ -140,6 +123,10 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     particleShader->setMat4("model", model);
     particleShader->setMat4("view", view);
     particleShader->setMat4("projection", projection);
+
+    // Pass world offset into the shader so GPU-side instance positions can
+    // be offset without changing simulation coordinates.
+    particleShader->setVec3("worldOffset", worldOffset);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_1D, gradientTexture);

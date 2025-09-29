@@ -82,14 +82,14 @@ int main() {
     settings.pressureMultiplier = 288.0f;
     settings.nearPressureMultiplier = 2.25f;
     settings.viscosityStrength = 0.001f;
-    settings.boundsSize = glm::vec3(4.0f, 4.0f, 4.0f);
+    settings.boundsSize = glm::vec3(10.0f, 4.0f, 4.0f);
     settings.collisionDamping = 0.95f;
     settings.boundaryForceMultiplier = 8.0f;
     settings.boundaryForceDistance = 0.5f;
     settings.timeScale = 0.9f;
     settings.iterationsPerFrame = 3;
 
-    const int numParticles = 15000;
+    const int numParticles = 50000 ;
     GPUFluidSimulation fluidSim(numParticles, settings);
     g_fluidSim = &fluidSim;
     GPUParticleDisplay particleDisplay(&fluidSim, &particleShader);
@@ -113,6 +113,18 @@ int main() {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+        // FPS counter: print once per second
+        static int frameCount = 0;
+        static float fpsTimer = 0.0f;
+        frameCount++;
+        fpsTimer += deltaTime;
+        if (fpsTimer >= 1.0f) {
+            float fps = static_cast<float>(frameCount) / fpsTimer;
+            std::cout << "FPS: " << fps << std::endl;
+            frameCount = 0;
+            fpsTimer = 0.0f;
+        }
 
         processInput(window);
 

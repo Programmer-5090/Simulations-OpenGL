@@ -89,10 +89,18 @@ public:
     template<typename T>
     static void WriteBuffer(GLuint buffer, const std::vector<T>& data) {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
-        void* ptr = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        GLsizeiptr sizeBytes = static_cast<GLsizeiptr>(data.size() * sizeof(T));
+        // Orphan the buffer to avoid GPU sync with previous users of the buffer
+        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeBytes, nullptr, GL_DYNAMIC_DRAW);
+
+        // Map with invalidate to avoid waiting on GPU for previous contents
+        void* ptr = glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeBytes, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
         if (ptr) {
-            std::memcpy(ptr, data.data(), data.size() * sizeof(T));
+            std::memcpy(ptr, data.data(), sizeBytes);
             glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        } else {
+            // Fallback: try glBufferSubData which may still work
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeBytes, data.data());
         }
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }

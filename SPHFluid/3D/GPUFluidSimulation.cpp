@@ -37,13 +37,18 @@ bool GPUFluidSimulation::InitializeGPU() {
         return false;
     }
     gpuSort.SetBuffers(spatialLookupBuffer, startIndicesBuffer);
+    // Warm up the compute program and GPU to reduce first-dispatch stalls
+    // This dispatch runs one small work-group to trigger any driver shader JIT and wake the GPU.
+    glUseProgram(fluidComputeProgram);
+    ComputeHelper::Dispatch(fluidComputeProgram, 1);
     return true;
 }
 
 void GPUFluidSimulation::InitializeParticles() {
     std::vector<GPUParticle> particles(numParticles);
 
-    glm::vec3 spawnSize(1.5f, 2.0f, 1.5f);
+    // Use a grid spawn so we can control spacing between particles.
+    // spawnCenter is the center of the initial particle block in simulation space.
     glm::vec3 spawnCenter(0.0f, 0.0f, 0.0f);
 
     int particlesPerSide = std::max(1, static_cast<int>(std::cbrt(static_cast<float>(numParticles))) + 1);
@@ -52,19 +57,40 @@ void GPUFluidSimulation::InitializeParticles() {
     std::uniform_real_distribution<float> dis(-0.02f, 0.02f);
 
     int particleIndex = 0;
+    // Determine spacing based on smoothing radius. A smaller spacingFactor makes
+    // particles closer together. Default lowered to 0.6 to reduce inter-particle gaps.
+    float spacingFactor = 0.6f; // smaller -> particles closer; tweak as needed
+    float desiredSpacing = settings.smoothingRadius * spacingFactor;
+
+    // Ensure the particle cube fits inside the simulation bounds. Compute the
+    // maximum allowed spacing so the overall grid extent <= 90% of the smallest bound.
+    int maxIndex = std::max(0, particlesPerSide - 1);
+    float minBound = std::min(std::min(settings.boundsSize.x, settings.boundsSize.y), settings.boundsSize.z);
+    float maxAllowedSpacing = 0.0f;
+    if (maxIndex > 0) {
+        maxAllowedSpacing = (minBound * 0.9f) / static_cast<float>(maxIndex);
+    }
+
+    float spacing = desiredSpacing;
+    if (maxIndex > 0) {
+        spacing = std::min(std::max(0.001f, desiredSpacing), maxAllowedSpacing);
+    } else {
+        spacing = 0.0f; // single particle case
+    }
+
+    // Center the grid around spawnCenter
+    glm::vec3 gridCenterOffset = glm::vec3(static_cast<float>(maxIndex) * 0.5f) * spacing;
+
     for (int x = 0; x < particlesPerSide && particleIndex < numParticles; x++) {
         for (int y = 0; y < particlesPerSide && particleIndex < numParticles; y++) {
             for (int z = 0; z < particlesPerSide && particleIndex < numParticles; z++) {
-                float tx = (particlesPerSide <= 1) ? 0.5f : static_cast<float>(x) / (particlesPerSide - 1);
-                float ty = (particlesPerSide <= 1) ? 0.5f : static_cast<float>(y) / (particlesPerSide - 1);
-                float tz = (particlesPerSide <= 1) ? 0.5f : static_cast<float>(z) / (particlesPerSide - 1);
+                // Grid coordinates -> world position
+                glm::vec3 basePos = glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)) * spacing;
 
+                // jitter keeps the lattice from perfect alignment (helps break symmetry)
                 glm::vec3 jitter(dis(gen), dis(gen), dis(gen));
-                glm::vec3 pos = glm::vec3(
-                    (tx - 0.5f) * spawnSize.x + spawnCenter.x,
-                    (ty - 0.5f) * spawnSize.y + spawnCenter.y,
-                    (tz - 0.5f) * spawnSize.z + spawnCenter.z
-                );
+
+                glm::vec3 pos = spawnCenter + (basePos - gridCenterOffset) + jitter;
 
                 particles[particleIndex].position = pos;
                 particles[particleIndex].velocity = glm::vec3(0.0f, 0.0f, 0.0f);

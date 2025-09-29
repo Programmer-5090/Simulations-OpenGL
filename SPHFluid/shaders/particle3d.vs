@@ -14,13 +14,15 @@ uniform mat4 model; // The base sphere's model matrix (scaling)
 uniform mat4 view;
 uniform mat4 projection;
 
+uniform vec3 worldOffset;
+
 uniform float velocityMax;
 uniform sampler1D ColourMap;
 
 void main()
 {
     // Transform position and normal into world space
-    FragPos = vec3(model * vec4(aPos, 1.0)) + aInstancePos;
+    FragPos = vec3(model * vec4(aPos, 1.0)) + aInstancePos + worldOffset;
     Normal = mat3(transpose(inverse(model))) * aNormal;
 
     gl_Position = projection * view * vec4(FragPos, 1.0);
