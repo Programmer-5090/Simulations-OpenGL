@@ -176,15 +176,6 @@ void ProcessNeighbors(uint particleIndex, int kernelType, inout vec3 pressureFor
                     vec3 pressureGradient = dirToNeighbor * DerivativeSpikyPow2(dst, smoothingRadius) * sharedPressure / neighborDensity;
                     vec3 nearPressureGradient = dirToNeighbor * DerivativeSpikyPow3(dst, smoothingRadius) * sharedNearPressure / neighborNearDensity;
                     
-                    // Limit the magnitude of pressure forces to prevent explosion
-                    float maxForce = 1000.0;
-                    if (length(pressureGradient) > maxForce) {
-                        pressureGradient = normalize(pressureGradient) * maxForce;
-                    }
-                    if (length(nearPressureGradient) > maxForce) {
-                        nearPressureGradient = normalize(nearPressureGradient) * maxForce;
-                    }
-                    
                     pressureForce += pressureGradient + nearPressureGradient;
 
                 } else if (kernelType == CalculateViscosityKernel) {

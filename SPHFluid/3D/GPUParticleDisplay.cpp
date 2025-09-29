@@ -135,7 +135,7 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     particleShader->use();
 
     // Scale the base sphere mesh to be proportional to the smoothing radius
-    float particleRadius = simulation->GetSettings().smoothingRadius * 0.4f; // 40% of smoothing radius for visual appeal
+    float particleRadius = 0.07f; // Adjust as needed for visual size
     glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(particleRadius));
     particleShader->setMat4("model", model);
     particleShader->setMat4("view", view);
