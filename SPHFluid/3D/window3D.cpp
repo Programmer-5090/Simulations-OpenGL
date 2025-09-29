@@ -89,7 +89,7 @@ int main() {
     settings.timeScale = 0.9f;
     settings.iterationsPerFrame = 3;
 
-    const int numParticles = 10000;
+    const int numParticles = 15000;
     GPUFluidSimulation fluidSim(numParticles, settings);
     g_fluidSim = &fluidSim;
     GPUParticleDisplay particleDisplay(&fluidSim, &particleShader);
