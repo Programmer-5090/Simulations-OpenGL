@@ -6,13 +6,19 @@ unsigned int TextureFromFile(const char *path, const std::string &directory, boo
 void Model::loadModel(std::string path)
 {
     Assimp::Importer import;
-    const aiScene *scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+    // Request generation of smooth normals if the model doesn't provide them
+    const aiScene *scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
     
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode){
         std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
         return;
     }
-    directory = path.substr(0, path.find_last_of('/'));
+    // Support both POSIX and Windows path separators when extracting directory
+    size_t pos = path.find_last_of("/\\");
+    if (pos != std::string::npos)
+        directory = path.substr(0, pos);
+    else
+        directory = ".";
 
     processNode(scene->mRootNode, scene);
 }
@@ -48,21 +54,32 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
         vector.z = mesh->mVertices[i].z; 
         vertex.Position = vector;
 
-        vector.x = mesh->mNormals[i].x;
-        vector.y = mesh->mNormals[i].y;
-        vector.z = mesh->mNormals[i].z;
-        vertex.Normal = vector; 
+        // Normals may be missing for some meshes; guard against null pointer
+        if (mesh->HasNormals() && mesh->mNormals)
+        {
+            vector.x = mesh->mNormals[i].x;
+            vector.y = mesh->mNormals[i].y;
+            vector.z = mesh->mNormals[i].z;
+            vertex.Normal = vector;
+        }
+        else
+        {
+            vertex.Normal = glm::vec3(0.0f, 0.0f, 0.0f);
+        }
 
         // process material
-        if(mesh->mTextureCoords[0]) // does the mesh contain texture coordinates?
+
+        // Texture coordinates: check for the presence of channel 0
+        if (mesh->HasTextureCoords(0) && mesh->mTextureCoords[0])
         {
             glm::vec2 vec;
-            vec.x = mesh->mTextureCoords[0][i].x; 
+            vec.x = mesh->mTextureCoords[0][i].x;
             vec.y = mesh->mTextureCoords[0][i].y;
             vertex.TexCoords = vec;
         }
-        else{
-            vertex.TexCoords = glm::vec2(0.0f, 0.0f); 
+        else
+        {
+            vertex.TexCoords = glm::vec2(0.0f, 0.0f);
         }
 
         vertices.push_back(vertex);

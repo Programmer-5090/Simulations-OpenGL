@@ -22,7 +22,6 @@ static GPUFluidSimulation* g_fluidSim = nullptr;
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
-// Camera (static to avoid conflicts with other files)
 // Point the camera toward the origin for a better initial view of the simulation bounds
 static Camera camera(
     glm::vec3(-7.0f, 7.0f, 10.0f),          // position
@@ -216,6 +215,10 @@ static void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
+        camera.ProcessKeyboard(UP, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        camera.ProcessKeyboard(DOWN, deltaTime);
     
     // Pause / resume with Space (toggle on key press)
     static bool spaceKeyPressed = false;

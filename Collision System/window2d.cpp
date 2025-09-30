@@ -67,7 +67,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Simple Circle Renderer", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Collision System", NULL, NULL);
     if (window == NULL) {
         std::cerr << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -229,16 +229,8 @@ int main() {
             glBindTexture(GL_TEXTURE_2D, texture);
             shader2D.setInt("texture1", 0);
 
-            // Optimized: Batch rendering with frustum culling
             size_t renderedCount = 0;
             for (const Particle& particle : particles) {
-                // Simple frustum culling - only render particles in view
-                if (particle.position.x + particle.radius < WORLD_LEFT || 
-                    particle.position.x - particle.radius > WORLD_RIGHT ||
-                    particle.position.y + particle.radius < WORLD_BOTTOM || 
-                    particle.position.y - particle.radius > WORLD_TOP) {
-                    continue; // Skip offscreen particles
-                }
                 
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, glm::vec3(particle.position.x, particle.position.y, 0.0f));

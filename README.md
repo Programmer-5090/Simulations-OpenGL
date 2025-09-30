@@ -2,7 +2,7 @@
 
 # OpenGL Physics Simulation Suite
 
-A modern OpenGL framework for real-time physics: GPU fluid simulation (2D/3D), collision detection, and procedural geometry.
+A Repository of Real-time physics Simulations: GPU fluid simulation (2D/3D), Collision Detection, and Procedural Geometry.
 
 </div>
 
@@ -23,7 +23,7 @@ A modern OpenGL framework for real-time physics: GPU fluid simulation (2D/3D), c
 
 ## Overview
 
-This suite implements multiple simulation systems with modern OpenGL (core profile) and compute shaders for GPU-accelerated physics. It includes SPH-based fluid simulation (2D/3D), a particle collision system, and a small set of procedural geometry tools.
+This suite projects that  implement multiple simulation systems with modern OpenGL (core profile) and compute shaders for GPU-accelerated physics. It includes SPH-based fluid simulation (2D/3D), a particle collision system, and a small set of procedural geometry tools.
 
 ## Features
 
@@ -118,11 +118,11 @@ All paths are relative to the repo root (tasks set the working directory accordi
 
 3) CollisionSystem (2D)
 - OpenGL context: 3.3 Core
-- Window title: "Simple Circle Renderer"
+- Window title: 1280 x 800 (Resizable)
 - Auto‑spawning streams from the left edge; performance‑aware throttling
 - Shaders: `shaders/vertex.vs`, `shaders/simple_fragment.fs`
 
-4) OpenGLProject (main demo)
+1) OpenGLProject (main demo)
 - OpenGL context: 3.3 Core
 - Demonstrates geometry and basic rendering with an infinite grid
 - Shaders: `shaders/vertex.vs`, `shaders/simple_fragment.fs`, `shaders/infinite_grid.*`, optional normal debug `shaders/normal_debug.*`
@@ -188,11 +188,13 @@ GPU Fluid Simulation (2D):
 - Left mouse: attract particles
 - Right mouse: repel particles
 - Space: pause/resume
-- R: reset
+- R: reset simulation
 - ESC: exit
 
 GPU Fluid Simulation (3D):
 - WASD: move camera
+- Shift: move down
+- C: move up
 - Mouse: look around (cursor disabled)
 - Space: pause/resume
 - R: reset simulation
@@ -241,7 +243,7 @@ Before configuring/building, confirm these paths exist (examples):
 ## Performance notes
 
 - 2D particles: 1k–10k+ depending on GPU
-- 3D particles: 1k–5k typical for smooth real-time
+- 3D particles: 50k - 60k+ at 60fps
 - Memory: ~100–200 MB for common presets
 - Dedicated GPU strongly recommended for 3D + compute
 
@@ -261,6 +263,47 @@ Build errors on Windows:
 Missing DLLs:
 - Visual C++ Redistributable may be required for some systems
 
-## License
 
+## Images & Sources
+
+Where to place images and how to cite external sources for this repository's documentation and examples.
+
+- Recommended image folder: place images used by the README or docs under `img/` or a subfolder such as `img/readme/` so paths are stable and cross-platform.
+- Example image path in repo: `img/readme/simulation-screenshot.png`.
+
+Embedding images in Markdown (relative paths):
+
+```markdown
+![Short alt text](img/readme/simulation-screenshot.png)
+```
+
+Tips for alt text and sizing:
+- Provide a concise alt text (useful for accessibility and when images fail to load).
+- To control display size in GitHub-flavored Markdown, use HTML if needed:
+
+```html
+<img src="img\readme\GPUFluidSim2D_X0MrvDz7Yd.png" alt="2D Particle  fluid sim" width="600" />
+```
+
+Linking to external sources and attribution
+- Prefer linking to the original source when you reference articles, datasets, or assets. Example:
+
+```markdown
+[FastNoise2 library](https://github.com/Auburn/FastNoise2) — used for procedural noise in geometry generation.
+```
+
+- For images or assets you didn't create, include a clear attribution line near the image or in a separate `SOURCES.md` file. Example attribution line:
+
+```markdown
+Image: "Fluid particles" by Author Name — Source: https://example.com/asset (CC BY 4.0)
+```
+
+Best practices
+- Keep image files small (web‑optimized PNG/JPEG/WebP) and under `img/` so repository size remains reasonable.
+- Prefer permissive-licensed assets or host only thumbnails and link to the original full-resolution asset.
+- If you copy assets into the repo, include license text or a short note (file `img/README.md` or `SOURCES.md`) describing the origin and license.
+
+Optional: add a `SOURCES.md` file listing external assets used, their URLs, authors, and licenses. This helps audits and redistribution.
+
+# License
 This project is provided for educational and research purposes. Third‑party libraries retain their respective licenses.

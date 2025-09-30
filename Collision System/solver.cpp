@@ -251,6 +251,8 @@ void PhysicsSolver::checkCollisionsInSlice(int leftCol, int rightCol, int& colli
     }
 }
 
+
+// TODO: Use K-D tree or spatial hashing for better broad-phase collision detection
 void PhysicsSolver::checkCollisions() {
     updateParticleGrid(); // Update grid before checking collisions
     
@@ -381,7 +383,7 @@ Particle PhysicsSolver::createBallWithVelocity(glm::vec2 position, glm::vec2 vel
         randomFloat(0.5f, 1.0f),
         randomFloat(0.5f, 1.0f)
     );
-    particle.radius = 0.06f;
+    particle.radius = 0.1f;
     particle.acceleration = glm::vec2(0.0f);
     particle.id = static_cast<int>(particles.size());
     const float sub_dt = dt/iterations;

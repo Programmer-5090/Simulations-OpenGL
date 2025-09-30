@@ -1,7 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
-#include <algorithm> // For std::max/min
+#include <algorithm>
 #include "constants.h"
 
 class Particle {

@@ -96,6 +96,27 @@ add_executable(GPUFluidSim2D
     ${GLAD_SOURCES}
 )
 
+# Marching Cubes test executable
+add_executable(MarchingTest
+    "Marching Cubes/test.cpp"
+    "Marching Cubes/CubeMarching.cpp"
+    shader.cpp
+    mesh.cpp
+    model.cpp
+    ${GEOMETRY_SOURCES}
+    ${GLAD_SOURCES}
+)
+
+target_include_directories(MarchingTest PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(MarchingTest OpenGL::GL glfw)
+set_target_properties(MarchingTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+
 # Platform-specific compiler settings
 if(WIN32 AND MSVC)
     set_property(TARGET ${PROJECT_NAME} PROPERTY VS_USER_PROPS "")
@@ -124,8 +145,11 @@ target_link_libraries(GPUFluidSim2D OpenGL::GL glfw)
 
 # Platform-specific library linking
 if(WIN32)
+    # Add Assimp lib directory and link libraries to targets that use Assimp
     target_link_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
+    target_link_directories(MarchingTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
     target_link_libraries(${PROJECT_NAME} assimp-vc143-mt zlibstatic)
+    target_link_libraries(MarchingTest assimp-vc143-mt zlibstatic)
 elseif(APPLE)
     target_link_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/lib ${CMAKE_SOURCE_DIR}/includes/assimp/lib)
     target_link_libraries(${PROJECT_NAME} assimp)
