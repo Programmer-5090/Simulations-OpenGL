@@ -242,7 +242,7 @@ Before configuring/building, confirm these paths exist (examples):
 
 ## Performance notes
 
-- 2D particles: 10k - 15k+ depending on GPU and Window size
+- 2D particles: 10k - 15k+ depending on GPU and Window size at 144fps
 - 3D particles: 50k - 60k+ at 60fps
 - Memory: ~100–200 MB for common presets
 - Dedicated GPU strongly recommended for 3D + compute
