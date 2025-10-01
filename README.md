@@ -1,6 +1,6 @@
 <div align="center">
 
-# OpenGL Physics Simulation Suite
+# OpenGL Physics Simulations
 
 A Repository of Real-time physics Simulations: GPU fluid simulation (2D/3D), Collision Detection, and Procedural Geometry.
 
