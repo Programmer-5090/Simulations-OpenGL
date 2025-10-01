@@ -268,17 +268,20 @@ Missing DLLs:
 
 
 <img src="img/readme/GPUFluidSim2D_X0MrvDz7Yd.png" alt="2D Particle fluid sim" width="600" />
-<img src="img\readme\GPUFluidSim3D_hQh4Q2IFyl.png" alt="2D Particle fluid sim" width="600" />
-<img src="img\readme\CollisionSystem_xIL3KAtf2o.png" alt="2D Particle fluid sim" width="600" />
+<img src="img/readme/GPUFluidSim3D_hQh4Q2IFyl.png" alt="3D Particle fluid sim" width="600" />
+<img src="img/readme/CollisionSystem_xIL3KAtf2o.png" alt="Collision system" width="600" />
 
 
 # Sources
 
-[![Sebastian Lague:  Simulating Fluids](https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg?sqp=-oaymwEmCKgBEF5IWvKriqkDGQgBFQAAiEIYAdgBAeIBCggYEAIYBjgBQAE=\u0026rs=AOn4CLCKSJqnk_JwJOb2s0TZFXYepOUNJQ)](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s){:target="_blank"}
 
-[SPH Techniques for the Physics Based Simulation of Fluids and Solids](https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf){:target="_blank"}
+<a href="https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s" target="_blank" rel="noopener noreferrer">
+   <img src="https://i.ytimg.com/vi/rSKMYc1CQHE/maxresdefault.jpg" srcset="https://i.ytimg.com/vi/rSKMYc1CQHE/maxresdefault.jpg 2x, https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg 1x" alt="Sebastian Lague: Simulating Fluids" width="600" style="max-width:100%;height:auto;" />
+</a>
 
-[Foundations of SPH](https://sph-tutorial.physics-simulation.org/slides/01_intro_foundations_neighborhood.pdf){:target="_blank"}
+<a href="https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf" target="_blank" rel="noopener noreferrer">SPH Techniques for the Physics Based Simulation of Fluids and Solids</a>
+
+<a href="https://sph-tutorial.physics-simulation.org/slides/01_intro_foundations_neighborhood.pdf" target="_blank" rel="noopener noreferrer">Foundations of SPH</a>
 
 
 # License
