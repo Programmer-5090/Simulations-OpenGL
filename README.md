@@ -274,7 +274,7 @@ Missing DLLs:
 
 # Sources
 
-[![Sebastian Lague:  Simulating Fluids](https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg?sqp=-oaymwEmCKgBEF5IWvKriqkDGQgBFQAAiEIYAdgBAeIBCggYEAIYBjgBQAE=\u0026rs=AOn4CLCKSJqnk_JwJOb2s0TZFXYepOUNJQ)](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s)
+[![Sebastian Lague:  Simulating Fluids](https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg?sqp=-oaymwEmCKgBEF5IWvKriqkDGQgBFQAAiEIYAdgBAeIBCggYEAIYBjgBQAE=\u0026rs=AOn4CLCKSJqnk_JwJOb2s0TZFXYepOUNJQ)](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s):target="_blank"}
 
 [SPH Techniques for the Physics Based Simulation of Fluids and Solids](https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf)
 
