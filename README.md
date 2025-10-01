@@ -242,7 +242,7 @@ Before configuring/building, confirm these paths exist (examples):
 
 ## Performance notes
 
-- 2D particles: 1k–10k+ depending on GPU
+- 2D particles: 10k - 15k+ depending on GPU and Window size
 - 3D particles: 50k - 60k+ at 60fps
 - Memory: ~100–200 MB for common presets
 - Dedicated GPU strongly recommended for 3D + compute
@@ -264,46 +264,22 @@ Missing DLLs:
 - Visual C++ Redistributable may be required for some systems
 
 
-## Images & Sources
+## Images
 
-Where to place images and how to cite external sources for this repository's documentation and examples.
 
-- Recommended image folder: place images used by the README or docs under `img/` or a subfolder such as `img/readme/` so paths are stable and cross-platform.
-- Example image path in repo: `img/readme/simulation-screenshot.png`.
+<img src="img/readme/GPUFluidSim2D_X0MrvDz7Yd.png" alt="2D Particle fluid sim" width="600" />
+<img src="img\readme\GPUFluidSim3D_hQh4Q2IFyl.png" alt="2D Particle fluid sim" width="600" />
+<img src="img\readme\CollisionSystem_xIL3KAtf2o.png" alt="2D Particle fluid sim" width="600" />
 
-Embedding images in Markdown (relative paths):
 
-```markdown
-![Short alt text](img/readme/simulation-screenshot.png)
-```
+# Sources
 
-Tips for alt text and sizing:
-- Provide a concise alt text (useful for accessibility and when images fail to load).
-- To control display size in GitHub-flavored Markdown, use HTML if needed:
+[![Sebastian Lague:  Simulating Fluids](https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg?sqp=-oaymwEmCKgBEF5IWvKriqkDGQgBFQAAiEIYAdgBAeIBCggYEAIYBjgBQAE=\u0026rs=AOn4CLCKSJqnk_JwJOb2s0TZFXYepOUNJQ)](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s)
 
-```html
-<img src="img\readme\GPUFluidSim2D_X0MrvDz7Yd.png" alt="2D Particle  fluid sim" width="600" />
-```
+[SPH Techniques for the Physics Based Simulation of Fluids and Solids](https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf)
 
-Linking to external sources and attribution
-- Prefer linking to the original source when you reference articles, datasets, or assets. Example:
+[Foundations of SPH](https://sph-tutorial.physics-simulation.org/slides/01_intro_foundations_neighborhood.pdf)
 
-```markdown
-[FastNoise2 library](https://github.com/Auburn/FastNoise2) — used for procedural noise in geometry generation.
-```
-
-- For images or assets you didn't create, include a clear attribution line near the image or in a separate `SOURCES.md` file. Example attribution line:
-
-```markdown
-Image: "Fluid particles" by Author Name — Source: https://example.com/asset (CC BY 4.0)
-```
-
-Best practices
-- Keep image files small (web‑optimized PNG/JPEG/WebP) and under `img/` so repository size remains reasonable.
-- Prefer permissive-licensed assets or host only thumbnails and link to the original full-resolution asset.
-- If you copy assets into the repo, include license text or a short note (file `img/README.md` or `SOURCES.md`) describing the origin and license.
-
-Optional: add a `SOURCES.md` file listing external assets used, their URLs, authors, and licenses. This helps audits and redistribution.
 
 # License
 This project is provided for educational and research purposes. Third‑party libraries retain their respective licenses.
