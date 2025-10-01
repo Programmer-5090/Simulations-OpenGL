@@ -274,11 +274,11 @@ Missing DLLs:
 
 # Sources
 
-[![Sebastian Lague:  Simulating Fluids](https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg?sqp=-oaymwEmCKgBEF5IWvKriqkDGQgBFQAAiEIYAdgBAeIBCggYEAIYBjgBQAE=\u0026rs=AOn4CLCKSJqnk_JwJOb2s0TZFXYepOUNJQ)](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s):target="_blank"}
+[![Sebastian Lague:  Simulating Fluids](https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg?sqp=-oaymwEmCKgBEF5IWvKriqkDGQgBFQAAiEIYAdgBAeIBCggYEAIYBjgBQAE=\u0026rs=AOn4CLCKSJqnk_JwJOb2s0TZFXYepOUNJQ)](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s){:target="_blank"}
 
-[SPH Techniques for the Physics Based Simulation of Fluids and Solids](https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf)
+[SPH Techniques for the Physics Based Simulation of Fluids and Solids](https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf){:target="_blank"}
 
-[Foundations of SPH](https://sph-tutorial.physics-simulation.org/slides/01_intro_foundations_neighborhood.pdf)
+[Foundations of SPH](https://sph-tutorial.physics-simulation.org/slides/01_intro_foundations_neighborhood.pdf){:target="_blank"}
 
 
 # License
