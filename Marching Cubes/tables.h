@@ -1,3 +1,9 @@
+/* 
+    Tables and conventions from
+    http://paulbourke.net/geometry/polygonise/
+*/
+#include <vector>
+
 int edgeTable[256]={
 0x0  , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
@@ -289,3 +295,10 @@ int triTable[256][16] =
 {0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
+
+std::vector<std::pair<int, int>> edgeToVertices = 
+        {
+            {0, 1}, {1, 2}, {2, 3}, {0, 3},
+            {4, 5}, {5, 6}, {6, 7}, {4, 7},
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}
+        };

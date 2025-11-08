@@ -9,31 +9,21 @@
 #include "../mesh.h"
 #include "../geometry/circle.h"
 #include "constants.h"
-#include "solver.h"
+#include "Nsolver.h"
 #include "utils.h"
 #include <iostream>
 #include <random>
 #include <vector>
-#include <iomanip> // For std::fixed, std::setprecision
+#include <iomanip>
+#include <string>
+#include "mapPixel.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
-void mouse_button_callback(GLFWwindow* window, int button, int action, int mods); // (unused now)
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 
-// Automatic spawning configuration
 float autoSpawnTimer = 0.0f;
-const float AUTO_SPAWN_INTERVAL = 0.0125f; // seconds between spawn waves
-const glm::vec2 CONSTANT_VELOCITY = glm::vec2(3.0f, 0.0f); // constant initial velocity for all balls
-const int STREAM_COUNT = 4;            // number of parallel streams
-const float STREAM_SPACING = 0.30f;    // vertical spacing between streams
-const float SPAWN_MARGIN_X = 0.25f;    // offset from WORLD_LEFT
-const float TOP_MARGIN = 0.4f;         // distance below WORLD_TOP for first stream
-bool spawnEnabled = true;                 // can be disabled on slowdown
-const float PERF_CHECK_INTERVAL = 2.0f;   // seconds between performance checks
-const float PHYSICS_TIME_THRESHOLD = 100.0f; // if physics takes >30ms per frame, stop spawning
-const float MAX_PARTICLE_DENSITY = 1.0f; // max particles per world unit area (stops spawning when full)
-float perfTimer = 0.0f;                   // accumulates time for performance window
-float maxPhysicsTimeInWindow = 0.0f;      // peak physics time in current window
+bool spawnEnabled = true;
 
 // Timing
 const float fixedDeltaTime = 1.0f / 120.0f;
@@ -41,14 +31,32 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 float accumulator = 0.0f;
 
-// Global physics solver
-PhysicsSolver solver;
+Nsolver solver;
 
-// Mouse callback retained but disabled (no spawning)
+// Image mapping state machine
+enum class SpawnState {
+    INITIAL_GENERATION,  // Generate particles to establish positions
+    MAPPING_COLORS,      // Map particles to image colors
+    SPAWNING_COLORED     // Spawn particles with mapped colors
+};
+
+SpawnState currentState = SpawnState::INITIAL_GENERATION;
+MapPixel mapPixel;
+size_t mapPixelIndex = 0;
+const std::string IMAGE_PATH1 = "img/textures/teto.png";
+const std::string IMAGE_PATH2 = "img/textures/doge.png";
+static bool useFirstImage = true;
+bool debugPaused = false;
+
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         solver.clearParticles();
-        std::cout << "Particles cleared" << std::endl;
+        mapPixel.idToColor.clear();
+        mapPixelIndex = 0;
+        currentState = SpawnState::INITIAL_GENERATION;
+        spawnEnabled = true;
+        autoSpawnTimer = 0.0f;
+        std::cout << "Particles cleared - restarting color mapping" << std::endl;
     }
 }
 
@@ -63,10 +71,6 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
-
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Collision System", NULL, NULL);
     if (window == NULL) {
         std::cerr << "Failed to create GLFW window" << std::endl;
@@ -76,7 +80,6 @@ int main() {
     
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    // Mouse spawning disabled – only right-click clear retained
     glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     // GLAD initialization
@@ -86,7 +89,6 @@ int main() {
         return -1;
     }
 
-    // Check OpenGL version
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
@@ -113,24 +115,12 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // Add some initial particles for testing
-    std::cout << "Adding initial test particles..." << std::endl;
-    for (int i = 0; i < 10; ++i) {
-        glm::vec2 testPos(randomFloat(-5.0f, 5.0f), randomFloat(2.0f, 5.0f));
-        Particle testParticle = solver.createBall(testPos, fixedDeltaTime);
-        solver.addParticle(testParticle);
-    }
-    std::cout << "Initial particles added: " << solver.getParticleCount() << std::endl;
-
-    
-    
     // Performance monitoring
     int frameCount = 0;
     float fpsTimer = 0.0f;
 
-    std::cout << "Physics engine ready! Auto-spawning from left edge. Right-click or press C to clear." << std::endl;
-    std::cout << "Spawning stops automatically if physics time exceeds " << PHYSICS_TIME_THRESHOLD << "ms per frame" << std::endl;
-    std::cout << "Or if particle density exceeds " << MAX_PARTICLE_DENSITY << " particles per world unit area" << std::endl;
+    std::cout << "Physics engine ready! Generating initial particle layout for color mapping..." << std::endl;
+    std::cout << "Right-click or press C to clear and restart." << std::endl;
 
     std::cout << "Entering main loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
@@ -144,70 +134,190 @@ int main() {
         if (deltaTime > 0.0167f) deltaTime = 0.0167f;
         accumulator += deltaTime;
 
-        if (spawnEnabled) {
-            autoSpawnTimer += deltaTime;
-            while (autoSpawnTimer >= AUTO_SPAWN_INTERVAL) {
-                float baseY = WORLD_TOP - TOP_MARGIN;
-                float x = WORLD_LEFT + SPAWN_MARGIN_X;
-                for (int i = 0; i < STREAM_COUNT; ++i) {
-                    float y = baseY - i * STREAM_SPACING;
-                    if (y - 0.2f < WORLD_BOTTOM) break;
-                    glm::vec2 spawnPos(x, y);
-                    Particle p = solver.createBallWithVelocity(spawnPos, CONSTANT_VELOCITY, fixedDeltaTime);
-                    solver.addParticle(p);
+        // State machine for particle generation and color mapping
+        switch (currentState) {
+            case SpawnState::INITIAL_GENERATION:
+                // Phase 1: Generate particles to establish positions (no colors yet)
+                // NOTE: Actual spawning happens inside the physics fixed-step loop to ensure determinism.
+                {
+                    // Transition when we've reached max particles or density limit
+                    float worldArea = (WORLD_RIGHT - WORLD_LEFT) * (WORLD_TOP - WORLD_BOTTOM);
+                    float currentDensity = solver.getParticleCount() / worldArea;
+                    if (solver.getParticleCount() >= MAX_PARTICLES || currentDensity >= MAX_PARTICLE_DENSITY) {
+                        std::cout << "Generated " << solver.getParticleCount()
+                                  << " particles (density: " << currentDensity
+                                  << "). Mapping to image colors..." << std::endl;
+                        // Stop any further spawning before mapping
+                        spawnEnabled = false;
+                        currentState = SpawnState::MAPPING_COLORS;
+                    }
                 }
-                autoSpawnTimer -= AUTO_SPAWN_INTERVAL;
-            }
-        }
+                break;
 
-        try {
-            while (accumulator >= fixedDeltaTime) {
-                solver.update(fixedDeltaTime);
-                accumulator -= fixedDeltaTime;
+            case SpawnState::MAPPING_COLORS:
+                // Phase 2: Map current particle positions to image colors
+                {
+                    std::vector<Particle>& particles = solver.getParticles();
+                    float worldWidth = WORLD_RIGHT - WORLD_LEFT;
+                    float worldHeight = WORLD_TOP - WORLD_BOTTOM;
+                    
+                    // CRITICAL CHECK: Are particles stored in ID order in the vector?
+                    // This matters because Phase 3 spawns assume sequential ID assignment
+                    bool idOrderMismatch = false;
+                    for (size_t i = 0; i < particles.size(); ++i) {
+                        if (particles[i].id != (int)i) {
+                            idOrderMismatch = true;
+                            break;
+                        }
+                    }
+                    
+                    if (idOrderMismatch) {
+                        std::cout << "\n!!! WARNING: Particle IDs do NOT match vector indices !!!" << std::endl;
+                        std::cout << "This means the ID-to-color mapping will be incorrect!" << std::endl;
+                        std::cout << "First 10 particles showing [index] vs ID:" << std::endl;
+                        for (int i = 0; i < std::min(10, (int)particles.size()); ++i) {
+                            std::cout << "  particles[" << i << "].id = " << particles[i].id;
+                            if (particles[i].id != i) std::cout << " *** MISMATCH ***";
+                            std::cout << std::endl;
+                        }
+                    }
+                    
+                    try {
+                        if (useFirstImage) {
+                            std::cout << "Mapping particles to colors from image: " << IMAGE_PATH1 << std::endl;
+                            mapPixel.addParticles(particles, IMAGE_PATH1, worldWidth, worldHeight);
+                        } else {
+                            std::cout << "Mapping particles to colors from image: " << IMAGE_PATH2 << std::endl;
+                            mapPixel.addParticles(particles, IMAGE_PATH2, worldWidth, worldHeight);
+                        }
+                        std::cout << "Color mapping complete. " << mapPixel.size() 
+                                  << " colors stored." << std::endl;
+                        
+                        // DEBUG: Apply mapped colors to current particles for visualization
+                        std::cout << "\n=== DEBUG MODE ===" << std::endl;
+                        std::cout << "Applying mapped colors to settled particles for verification..." << std::endl;
+                        for (auto& p : particles) {
+                            auto col = mapPixel.getColorById(p.id);
+                            p.color = glm::vec3(col[0], col[1], col[2]);
+                        }
+                        std::cout << "Colors applied. Press SPACE to continue to phase 3, or C to restart." << std::endl;
+                        std::cout << "==================\n" << std::endl;
+                        
+                        debugPaused = true;
+                        // Don't clear particles yet - stay in this state until user presses space
+                    } catch (const std::exception& e) {
+                        std::cerr << "Image mapping failed: " << e.what() << std::endl;
+                        // Fall back to initial generation with default colors
+                        currentState = SpawnState::INITIAL_GENERATION;
+                        mapPixel.idToColor.clear();
+                    }
+                }
+                break;
+
+            case SpawnState::SPAWNING_COLORED:
+                // Phase 3: Spawn particles with pre-mapped colors (looked up by ID)
+                // NOTE: Actual spawning happens inside the physics fixed-step loop to ensure determinism.
+                // Finished spawning check (executed every frame)
+                if (mapPixelIndex >= mapPixel.size() && spawnEnabled) {
+                    std::cout << "All " << mapPixel.size()
+                              << " colored particles spawned! Waiting 5 seconds for settling..." << std::endl;
+                    spawnEnabled = false;
+                }
                 
-                float physicsTime = solver.getLastPhysicsTime();
-                maxPhysicsTimeInWindow = std::max(maxPhysicsTimeInWindow, physicsTime);
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Solver update error: " << e.what() << std::endl;
-            break;
+                break;
         }
 
-        // Performance monitoring based on physics timing
-        perfTimer += deltaTime;
-        
-        // Debug first few frames
-        static int debugFrameCount = 0;
-        debugFrameCount++;
-        if (debugFrameCount < 5) {
-            std::cout << "Frame " << debugFrameCount << " - Particles: " << solver.getParticleCount() << std::endl;
-        }
-        
-        if (perfTimer >= PERF_CHECK_INTERVAL) {
-            float worldArea = (WORLD_RIGHT - WORLD_LEFT) * (WORLD_TOP - WORLD_BOTTOM);
-            float currentDensity = solver.getParticleCount() / worldArea;
-            
-            // std::cout << "Peak Physics Time: " << maxPhysicsTimeInWindow << "ms"
-            //           << " | Particles: " << solver.getParticleCount()
-            //           << " | Density: " << std::fixed << std::setprecision(3) << currentDensity
-            //           << (spawnEnabled ? " | Spawning ON" : " | Spawning OFF")
-            //           << std::endl;
-            if (spawnEnabled && maxPhysicsTimeInWindow > PHYSICS_TIME_THRESHOLD) {
-                spawnEnabled = false;
-                std::cout << "Auto-spawning disabled due to slow physics (" << maxPhysicsTimeInWindow << "ms)" << std::endl;
+        // Physics update (and deterministic spawning, synchronized with physics steps)
+        // Skip physics updates when in debug pause
+        if (!debugPaused) {
+            try {
+                while (accumulator >= fixedDeltaTime) {
+                    // 1) Deterministic spawning happens FIRST in each fixed step
+                    if (spawnEnabled) {
+                        autoSpawnTimer += fixedDeltaTime;
+                        while (autoSpawnTimer >= AUTO_SPAWN_INTERVAL) {
+                            float baseY = WORLD_TOP - TOP_MARGIN;
+                            float x = WORLD_LEFT + SPAWN_MARGIN_X;
+                            for (int i = 0; i < STREAM_COUNT; ++i) {
+                                // Stop conditions per mode
+                                if (currentState == SpawnState::INITIAL_GENERATION) {
+                                    if (solver.getParticleCount() >= MAX_PARTICLES) break;
+                                } else if (currentState == SpawnState::SPAWNING_COLORED) {
+                                    if (mapPixelIndex >= mapPixel.size()) break;
+                                }
+
+                                float y = baseY - i * STREAM_SPACING;
+                                if (y - 0.2f < WORLD_BOTTOM) break;
+
+                                glm::vec2 spawnPos(x, y);
+
+                                if (currentState == SpawnState::INITIAL_GENERATION) {
+                                    Particle p = solver.createParticle(spawnPos, CONSTANT_VELOCITY, 0.07f, fixedDeltaTime, true);
+                                    solver.addParticle(p);
+                                } else if (currentState == SpawnState::SPAWNING_COLORED) {
+                                    Particle p = solver.createParticle(spawnPos, CONSTANT_VELOCITY, 0.07f, fixedDeltaTime, false);
+                                    auto col = mapPixel.getColorById(p.id);
+                                    p.color = glm::vec3(col[0], col[1], col[2]);
+
+                                    solver.addParticle(p);
+                                    ++mapPixelIndex;
+                                }
+                            }
+                            autoSpawnTimer -= AUTO_SPAWN_INTERVAL;
+                        }
+                    }
+
+                    // 2) Then advance physics one fixed step
+                    solver.update(fixedDeltaTime);
+                    accumulator -= fixedDeltaTime;
+                    
+                    // FPS/UPS counter
+                    static int updatesThisSecond = 0;
+                    static float upsTimer = 0.0f;
+                    
+                    frameCount++;
+                    fpsTimer += deltaTime;
+                    upsTimer += deltaTime;
+                    
+                    if (accumulator < fixedDeltaTime) {
+                        updatesThisSecond++;
+                    }
+                    
+                    if (fpsTimer >= 1.0f) {
+                        float fps = frameCount / fpsTimer;
+                        float ups = updatesThisSecond / fpsTimer;
+                        int particleCount = solver.getParticleCount();
+
+                        std::cout << std::fixed << std::setprecision(1)
+                                << "FPS: " << fps
+                                << " | UPS: " << ups
+                                << " | Particles: " << particleCount 
+                                << " | State: ";
+                        
+                        switch(currentState) {
+                            case SpawnState::INITIAL_GENERATION: std::cout << "Generating"; break;
+                            case SpawnState::MAPPING_COLORS: std::cout << "Mapping"; break;
+                            case SpawnState::SPAWNING_COLORED: std::cout << "Colored (" << mapPixelIndex << "/" << mapPixel.size() << ")"; break;
+                        }
+                        std::cout << std::endl;
+
+                        frameCount = 0;
+                        updatesThisSecond = 0;
+                        fpsTimer = 0.0f;
+                        upsTimer = 0.0f;
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Solver update error: " << e.what() << std::endl;
+                break;
             }
-            maxPhysicsTimeInWindow = 0.0f;
-            perfTimer = 0.0f;
-        }        // Rendering
+        }
+
+        // Rendering
         glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         const std::vector<Particle>& particles = solver.getParticles();
-        static bool debugOnce = false;
-        if (!debugOnce) {
-            std::cout << "Got particles vector, size: " << particles.size() << std::endl;
-            debugOnce = true;
-        }
         
         if (!particles.empty()) {
             glm::mat4 projection = glm::ortho(WORLD_LEFT, WORLD_RIGHT, WORLD_BOTTOM, WORLD_TOP, -1.0f, 1.0f);
@@ -217,7 +327,6 @@ int main() {
             shader2D.setMat4("projection", projection);
             shader2D.setMat4("view", view);
 
-            // Optimized: Set lighting once per frame, not per particle
             shader2D.setVec3("lightColor", glm::vec3(1.0f));
             shader2D.setVec3("viewPos", glm::vec3(0.0f, 0.0f, 1.0f));
             shader2D.setVec3("dirLight.direction", glm::vec3(0.0f, 0.0f, -1.0f));
@@ -229,37 +338,22 @@ int main() {
             glBindTexture(GL_TEXTURE_2D, texture);
             shader2D.setInt("texture1", 0);
 
-            size_t renderedCount = 0;
             for (const Particle& particle : particles) {
-                
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, glm::vec3(particle.position.x, particle.position.y, 0.0f));
                 model = glm::scale(model, glm::vec3(particle.radius));
 
                 shader2D.setMat4("model", model);
-
-                // Optimized: Simpler material setup
                 shader2D.setVec3("material.ambient", particle.color * 0.6f);
                 shader2D.setVec3("material.diffuse", particle.color);
-                shader2D.setVec3("material.specular", glm::vec3(0.05f)); // Reduced specular
-                shader2D.setFloat("material.shininess", 8.0f); // Reduced shininess
+                shader2D.setVec3("material.specular", glm::vec3(0.05f));
+                shader2D.setFloat("material.shininess", 8.0f);
 
                 circleMesh.Draw(shader2D);
-                renderedCount++;
-            }
-            
-            // Debug: Show render stats occasionally
-            static int renderDebugCounter = 0;
-            if (++renderDebugCounter % 120 == 0) { // Every 2 seconds at 60fps
-                float cullingRatio = (float)renderedCount / particles.size();
-                if (cullingRatio < 0.95f) {
-                    std::cout << "Culled " << (particles.size() - renderedCount) 
-                              << " particles (" << (int)((1.0f - cullingRatio) * 100) << "%)" << std::endl;
-                }
             }
         }
 
-    glfwSwapBuffers(window);
+        glfwSwapBuffers(window);
     }
 
     // Cleanup
@@ -276,11 +370,53 @@ void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
         if (!cKeyPressed) {
             solver.clearParticles();
-            std::cout << "All particles cleared!" << std::endl;
+            mapPixel.idToColor.clear();
+            mapPixelIndex = 0;
+            currentState = SpawnState::INITIAL_GENERATION;
+            debugPaused = false;
+            spawnEnabled = true;
+            autoSpawnTimer = 0.0f;
+            std::cout << "All particles cleared - restarting color mapping!" << std::endl;
             cKeyPressed = true;
         }
     } else {
         cKeyPressed = false;
+    }
+
+    // Edge-triggered toggle for image switching to avoid rapid flipping while key is held
+    static bool kKeyPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS) {
+        if (!kKeyPressed) {
+            useFirstImage = !useFirstImage;
+            std::cout << "Switched to " << (useFirstImage ? "first" : "second") << " image for color mapping." << std::endl;
+            kKeyPressed = true;
+        }
+    } else {
+        kKeyPressed = false;
+    }
+
+    static bool spacePressed = false;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        if (!spacePressed) {
+            // If in debug pause, continue to phase 3 with immediate spawning
+            if (debugPaused) {
+                debugPaused = false;
+                std::cout << "\n=== PHASE 3: SPAWNING WITH MAPPED COLORS ===" << std::endl;
+                // Clear particles and prepare for colored spawn with immediate start
+                solver.clearParticles();
+                mapPixelIndex = 0;
+                spawnEnabled = true;
+                autoSpawnTimer = 0.0f;
+                currentState = SpawnState::SPAWNING_COLORED;
+            } else {
+                // Normal spawn toggle
+                spawnEnabled = !spawnEnabled;
+                std::cout << (spawnEnabled ? "Auto-spawning enabled" : "Auto-spawning paused") << std::endl;
+            }
+            spacePressed = true;
+        }
+    } else {
+        spacePressed = false;
     }
 }
 

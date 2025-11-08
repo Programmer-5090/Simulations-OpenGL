@@ -52,7 +52,8 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${GEOMETRY_SOURCES} ${GLAD_SOURCES})
 # Collision System executable
 add_executable(CollisionSystem 
     "Collision System/window2d.cpp"
-    "Collision System/solver.cpp"
+    "Collision System/Nsolver.cpp"
+    "Collision System/stb_image_impl.cpp"
     "Collision System/utils.cpp"
     shader.cpp 
     mesh.cpp 
@@ -96,6 +97,12 @@ add_executable(GPUFluidSim2D
     ${GLAD_SOURCES}
 )
 
+# SFML setup
+set(SFML_DIR "${CMAKE_SOURCE_DIR}/includes/SFML/SFML-2.6.1")
+set(SFML_INCLUDE_DIR "${SFML_DIR}/include")
+set(SFML_LIB_DIR "${SFML_DIR}/lib")
+set(SFML_BIN_DIR "${CMAKE_SOURCE_DIR}/lib/SFML")
+
 # Marching Cubes test executable
 add_executable(MarchingTest
     "Marching Cubes/test.cpp"
@@ -103,6 +110,7 @@ add_executable(MarchingTest
     shader.cpp
     mesh.cpp
     model.cpp
+    "audio/audio.cpp"
     ${GEOMETRY_SOURCES}
     ${GLAD_SOURCES}
 )
@@ -112,10 +120,94 @@ target_include_directories(MarchingTest PRIVATE
     ${CMAKE_SOURCE_DIR}/includes/glad
     ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}
+    ${SFML_INCLUDE_DIR}
 )
 
-target_link_libraries(MarchingTest OpenGL::GL glfw)
+target_link_directories(MarchingTest PRIVATE ${SFML_LIB_DIR})
+target_link_libraries(MarchingTest 
+    OpenGL::GL 
+    glfw
+    optimized sfml-audio
+    optimized sfml-system
+    debug sfml-audio-d  
+    debug sfml-system-d
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(MarchingTest PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(MarchingTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
 set_target_properties(MarchingTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+
+# GPU Marching Cubes test executable
+add_executable(testGPU
+    "Marching Cubes/testGPU.cpp"
+    "Marching Cubes/GPUMarchCubes.cpp"
+    shader.cpp
+    mesh.cpp
+    model.cpp
+    ${GEOMETRY_SOURCES}
+    ${GLAD_SOURCES}
+)
+
+target_include_directories(testGPU PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_directories(testGPU PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
+target_link_libraries(testGPU 
+    OpenGL::GL 
+    glfw
+    assimp-vc143-mt
+    zlibstatic
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(testGPU PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(testGPU PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+set_target_properties(testGPU PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+
+# CPU Marching Cubes bunny test executable
+add_executable(testCPUBunny
+    "Marching Cubes/testCPUBunny.cpp"
+    "Marching Cubes/CubeMarching.cpp"
+    shader.cpp
+    mesh.cpp
+    model.cpp
+    ${GEOMETRY_SOURCES}
+    ${GLAD_SOURCES}
+)
+
+target_include_directories(testCPUBunny PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_directories(testCPUBunny PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
+target_link_libraries(testCPUBunny 
+    OpenGL::GL 
+    glfw
+    assimp-vc143-mt
+    zlibstatic
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(testCPUBunny PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(testCPUBunny PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+set_target_properties(testCPUBunny PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # Platform-specific compiler settings
 if(WIN32 AND MSVC)
@@ -157,6 +249,29 @@ elseif(APPLE)
     target_link_libraries(CollisionSystem "-framework OpenGL" "-framework Cocoa" "-framework IOKit")
 endif()
 
+# SFML Audio Test executable
+add_executable(AudioTest 
+    audio/sfml_audio_test.cpp
+    audio/audio.cpp
+)
+
+target_include_directories(AudioTest PRIVATE ${SFML_INCLUDE_DIR})
+target_link_directories(AudioTest PRIVATE ${SFML_LIB_DIR})
+target_link_libraries(AudioTest 
+    optimized sfml-audio
+    optimized sfml-system
+    debug sfml-audio-d  
+    debug sfml-system-d
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(AudioTest PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(AudioTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+set_target_properties(AudioTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+
 # Optional SDL2 support
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -179,4 +294,24 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
         $<TARGET_FILE_DIR:${PROJECT_NAME}>)
+
+    # Copy SFML DLLs for AudioTest
+    add_custom_command(TARGET AudioTest POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SFML_BIN_DIR}/sfml-audio-2.dll"
+        "${SFML_BIN_DIR}/sfml-audio-d-2.dll"
+        "${SFML_BIN_DIR}/sfml-system-2.dll"
+        "${SFML_BIN_DIR}/sfml-system-d-2.dll"
+        "${SFML_BIN_DIR}/openal32.dll"
+        $<TARGET_FILE_DIR:AudioTest>)
+
+    # Copy SFML DLLs for MarchingTest
+    add_custom_command(TARGET MarchingTest POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SFML_BIN_DIR}/sfml-audio-2.dll"
+        "${SFML_BIN_DIR}/sfml-audio-d-2.dll"
+        "${SFML_BIN_DIR}/sfml-system-2.dll"
+        "${SFML_BIN_DIR}/sfml-system-d-2.dll"
+        "${SFML_BIN_DIR}/openal32.dll"
+        $<TARGET_FILE_DIR:MarchingTest>)
 endif()

@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <stb_image.h>
 
 #include "../shader.h"
 #include "../camera.h"
@@ -11,7 +12,9 @@
 #include <iostream>
 #include "../geometry/sphere.h"
 #include "../model.h"
-// Local wireframe cube helper (avoids linking to BoundingBox implementation)
+#include "../audio/audio.h"
+#include <cmath>
+
 class WireCube {
 public:
     unsigned int VAO = 0, VBO = 0, EBO = 0;
@@ -63,7 +66,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // Camera
-Camera camera(glm::vec3(0.0f, 15.0f, 45.0f));
+Camera camera(glm::vec3(-4.0f, 2.0f, 45.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -75,8 +78,12 @@ float lastFrame = 0.0f;
 // Marching Cubes globals
 CubeMarching mc;
 Mesh marchingCubesMesh;
-int res = 32; // lower for stepwise view
+int res = 16; // lower for stepwise view
 float isolevel = 0.0f;
+
+// Fixed world-space parameters (independent of resolution)
+const float worldSize = 20.0f;        // Fixed world size in units
+const float sphereRadius = 6.0f;      // Fixed sphere radius in world units
 
 // Stepping & control flags
 bool stepNext = false;      // single-step (N or Right Arrow)
@@ -86,13 +93,18 @@ bool clearMesh = false;     // Clear mesh (C)
 bool autoStep = true;       // auto-advance through cells
 bool showNormals = false;   // toggle normal visualization (H)
 bool showChunkBox = true;   // toggle chunk box visibility (B)
+bool wireFrame = false;    // toggle wireframe mode (W)
 
-// wire cubes for visualization
+// State tracking for generation blocking
+bool canGenerate = true;    // Allow generation (blocked after G until C is pressed)
+
 WireCube chunkWire;
 WireCube wireCube;
 
-// Helper function to create a simple shader program from source
+Audio audio;
+
 unsigned int createSimpleShaderProgram(const char* vsSource, const char* fsSource);
+unsigned int loadTexture(const char* path);
 
 int main() {
     if (!glfwInit()) return -1;
@@ -119,10 +131,18 @@ int main() {
     glEnable(GL_DEPTH_TEST);
     glLineWidth(1.5f); // Make wireframe lines a bit thicker
 
+     if (!audio.load("audio/beep.wav")) {
+        std::cerr << "Failed to load audio file!" << std::endl;
+    }
+
     // Shaders
     Shader shader("shaders/vertex.vs", "shaders/simple_fragment.fs");
+    Shader texturedShader("shaders/vertex.vs", "shaders/textured_fragment.fs");
     Shader infiniteGridShader("shaders/infinite_grid.vs", "shaders/infinite_grid.fs");
 
+    // Load texture
+    unsigned int diffuseTexture = loadTexture("img/textures/emoji.png");
+    
     unsigned int gridVAO;
     glGenVertexArrays(1, &gridVAO);
     
@@ -147,110 +167,42 @@ int main() {
     )glsl";
     unsigned int wireframeShaderProgram = createSimpleShaderProgram(wire_vs, wire_fs);
 
-    // --- Normal debug shader (vertex, geometry, fragment) ---
-    const char* normal_vs = R"glsl(
-        #version 330 core
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec3 aNormal;
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-        out vec3 FragPos;
-        out vec3 Normal;
-        void main() {
-            FragPos = vec3(model * vec4(aPos, 1.0));
-            Normal = mat3(transpose(inverse(model))) * aNormal;
-            gl_Position = projection * view * model * vec4(aPos, 1.0);
-        }
-    )glsl";
-    const char* normal_gs = R"glsl(
-        #version 330 core
-        layout(points) in;
-        layout(line_strip, max_vertices = 2) out;
-        uniform float normalLength;
-        in vec3 FragPos[];
-        in vec3 Normal[];
-        uniform mat4 projection;
-        uniform mat4 view;
-        void main() {
-            vec3 p = FragPos[0];
-            vec3 n = normalize(Normal[0]);
-            gl_Position = projection * view * vec4(p, 1.0);
-            EmitVertex();
-            gl_Position = projection * view * vec4(p + n * normalLength, 1.0);
-            EmitVertex();
-            EndPrimitive();
-        }
-    )glsl";
-    const char* normal_fs = R"glsl(
-        #version 330 core
-        out vec4 FragColor;
-        void main() {
-            FragColor = vec4(1.0, 0.0, 0.0, 1.0); // red normals
-        }
-    )glsl";
-
-    unsigned int normalVS = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(normalVS, 1, &normal_vs, NULL);
-    glCompileShader(normalVS);
-    unsigned int normalGS = glCreateShader(GL_GEOMETRY_SHADER);
-    glShaderSource(normalGS, 1, &normal_gs, NULL);
-    glCompileShader(normalGS);
-    unsigned int normalFS = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(normalFS, 1, &normal_fs, NULL);
-    glCompileShader(normalFS);
-    unsigned int normalProgram = glCreateProgram();
-    glAttachShader(normalProgram, normalVS);
-    glAttachShader(normalProgram, normalGS);
-    glAttachShader(normalProgram, normalFS);
-    glLinkProgram(normalProgram);
-    glDeleteShader(normalVS);
-    glDeleteShader(normalGS);
-    glDeleteShader(normalFS);
+    // Normal debug shader using proper shader files
+    Shader normalDebugShader("shaders/normal_debug.vs", "shaders/normal_debug.fs", "shaders/normal_debug.gs");
 
     // showNormals is a global flag toggled by H
 
 
-    // Setup marching cubes
-    mc.setDimensions(res, res, res);
-    mc.SetVisualizeNoise(false);
+    // Setup marching cubes - create a test scalar field
+    // Generate a simple sphere-like field for demonstration
+    std::vector<std::vector<std::vector<float>>> scalarField(res, std::vector<std::vector<float>>(res, std::vector<float>(res, 0.0f)));
+    
+    // Calculate grid scale and sphere parameters
+    const float gridScale = worldSize / res; // Scale factor from grid to world    
+    float center = res * 0.5f;              // Center in grid coordinates
+    float radiusInGrid = sphereRadius / gridScale; // Convert world radius to grid coordinates
+    
+    for (int z = 0; z < res; z++) {
+        for (int y = 0; y < res; y++) {
+            for (int x = 0; x < res; x++) {
+                float dx = x - center;
+                float dy = y - center; 
+                float dz = z - center;
+                float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+                scalarField[z][y][x] = radiusInGrid - distance; // positive inside sphere
+            }
+        }
+    }
 
-    // Wire cube for the marching grid bounds (wire cube is unit and we will scale when rendering)
+    // Wire cube for the marching grid bounds
     wireCube.create(1.0f, 1.0f, 1.0f);
 
-    unsigned int triVAO=0, triVBO=0;
-    glGenVertexArrays(1, &triVAO);
-    glGenBuffers(1, &triVBO);
+    // Normal visualization will use the mesh directly via geometry shader
 
-    // Temporary buffers to draw normals via geometry shader (we will feed it points)
-    unsigned int normalVAO = 0, normalVBO = 0;
-    glGenVertexArrays(1, &normalVAO);
-    glGenBuffers(1, &normalVBO);
-    glBindVertexArray(normalVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, normalVBO);
-    // initially empty; we'll glBufferData when we have vertices
-    glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
-    // aPos (location 0)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float)*6, (void*)0);
-    glEnableVertexAttribArray(0);
-    // aNormal (location 1)
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float)*6, (void*)(sizeof(float)*3));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-
-    // --- Create a sphere and feed its vertices into the marching cubes input ---
-    // (This is why you weren't seeing a sphere: mc needs input vertices and an influence radius.)
-    Model bunny("models/stanford-bunny/source/bunny.obj");
-    Mesh bunnyMesh = bunny.meshes[0]; // use first mesh of the model
-    std::vector<glm::vec3> inputVerts;
-    for (const auto &v : bunnyMesh.vertices) inputVerts.push_back(v.Position);
-    mc.SetInputVertices(inputVerts);
-    mc.SetInfluenceRadius((float)res * 0.25f);
-
-    // Now that input is set, query grid bounds and create the chunk wire cube
-    int minX, minY, minZ, maxX, maxY, maxZ;
-    mc.GetInputGridBounds(minX, minY, minZ, maxX, maxY, maxZ);
-    glm::vec3 chunkSize = glm::vec3((float)(maxX - minX + 1), (float)(maxY - minY + 1), (float)(maxZ - minZ + 1));
+    // Set grid bounds for visualization
+    int minX = 0, minY = 0, minZ = 0;
+    int maxX = res-1, maxY = res-1, maxZ = res-1;
+    glm::vec3 chunkSize = glm::vec3((float)res, (float)res, (float)res);
     chunkWire.create(1.0f, 1.0f, 1.0f);
 
     // stepping state (start at min coords)
@@ -272,7 +224,8 @@ int main() {
 
         // Clear mesh when C is pressed
         if (clearMesh) {
-            mc.ClearMesh();
+            mc.clearMesh(); // clear the marching cubes mesh
+            marchingCubesMesh = Mesh(); // clear the rendering mesh
             gx = minX; gy = minY; gz = minZ; // reset stepping
             meshNeedsUpdate = true;
             clearMesh = false;
@@ -280,50 +233,83 @@ int main() {
 
         // Generate full mesh when G is pressed
         if (generateAll) {
-            mc.ClearMesh();
-            mc.GenerateMesh(isolevel);
+            mc.clearMesh();
+            mc.generateMesh(scalarField, isolevel);
             meshNeedsUpdate = true;
             generateAll = false;
         }
 
-        // Single-step requests (N key or Right arrow)
+        // Single-step requests (N key or Right arrow) - process single cube
         if (stepNext || stepRight) {
-            mc.TriangulateCellAt(gx, gy, gz, isolevel);
+            // Process the current cube and add it to the existing mesh
+            mc.processSingleCube(scalarField, gx, gy, gz, isolevel);
             meshNeedsUpdate = true;
             stepNext = stepRight = false;
 
             // advance to next cell
             gx++;
-            if (gx > maxX) { gx = minX; gy++; if (gy > maxY) { gy = minY; gz++; if (gz > maxZ) { gz = minZ; mc.ClearMesh(); } } }
+            if (gx > maxX) { 
+                gx = minX; 
+                gy++;
+                if (gy > maxY) {
+                    gy = minY;
+                    gz++;
+                    if (gz > maxZ) {
+                        gz = minZ;
+                        // Only clear when we've completed ALL cells and are starting over
+                        mc.clearMesh();
+                        canGenerate = true; // Allow new generation after stepping through all
+                    }
+                }
+            }
         }
+        float distanceToEnd = std::sqrt((gx - maxX)*(gx - maxX) + (gy - maxY)*(gy - maxY) + (gz - maxZ)*(gz - maxZ));
+        
+        float normalizedDistance = glm::clamp(distanceToEnd / (res * 1.732f), 0.0f, 1.0f);
+        float progress = 1.0f - normalizedDistance;
+        
+        // Exponential curve: starts slow, accelerates dramatically toward the end
+        float exponentialCurve = std::pow(progress, 3.0f); // Cubic curve for dramatic effect
+        
+        // Alternative curves (comment/uncomment to try different effects):
+       // float sineWave = 0.5f * (1.0f + std::sin(progress * 3.14159f - 3.14159f/2.0f)); // Smooth S-curve
+       // float logarithmic = std::log(1.0f + progress * (std::exp(1.0f) - 1.0f)); // Starts fast, slows down
 
-        // Auto-step timer
+        audio.setPitch(1.0f + exponentialCurve * 4.0f);
+        // Auto-step timer - process one cube at a time
         if (autoStep && now - lastStepTime > stepInterval) {
             lastStepTime = now;
-            mc.TriangulateCellAt(gx, gy, gz, isolevel);
+            mc.processSingleCube(scalarField, gx, gy, gz, isolevel);
             meshNeedsUpdate = true;
             gx++;
-            if (gx > maxX) { gx = minX; gy++; if (gy > maxY) { gy = minY; gz++; if (gz > maxZ) { gz = minZ; mc.ClearMesh(); } } }
+            if (gx > maxX) { 
+                gx = minX; 
+                gy++; 
+                if (gy > maxY) { 
+                    gy = minY; 
+                    gz++; 
+                    if (gz > maxZ) { 
+                        gz = minZ;
+                        // Only clear when we've completed ALL cells and are starting over
+                        mc.clearMesh();
+                        canGenerate = true;
+                    }
+                }
+            }
+            audio.play();
         }
 
-        // If any of the above happened, update the GPU mesh object
         if (meshNeedsUpdate) {
-            marchingCubesMesh = mc.CreateMesh();
-            // Update normal VAO/VBO with latest vertices: interleave pos+normal
-            const auto &vlist = mc.GetVertices();
-            std::vector<float> interleaved;
-            interleaved.reserve(vlist.size() * 6);
-            for (const auto &v : vlist) {
-                interleaved.push_back(v.Position.x);
-                interleaved.push_back(v.Position.y);
-                interleaved.push_back(v.Position.z);
-                interleaved.push_back(v.Normal.x);
-                interleaved.push_back(v.Normal.y);
-                interleaved.push_back(v.Normal.z);
+            const auto& vertices = mc.getVertices();
+            const auto& indices = mc.getIndices();
+            
+            if (!vertices.empty() && !indices.empty()) {
+                // Vertices are already in the correct Mesh format!
+                std::vector<unsigned int> meshIndices(indices.begin(), indices.end());
+                std::vector<Texture> textures; // empty textures
+                
+                marchingCubesMesh = Mesh(vertices, meshIndices, textures);
             }
-            glBindBuffer(GL_ARRAY_BUFFER, normalVBO);
-            glBufferData(GL_ARRAY_BUFFER, interleaved.size() * sizeof(float), interleaved.data(), GL_DYNAMIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
 
         glClearColor(0.9f, 0.92f, 0.95f, 1.0f);
@@ -347,73 +333,80 @@ int main() {
         infiniteGridShader.setFloat("gGridAlpha", 0.5f);
 
         glDepthMask(GL_FALSE);
-        
+
         // Bind VAO and render the infinite grid as triangles
         glBindVertexArray(gridVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         glDepthMask(GL_TRUE);
 
-        // Set up matrices
+        // Set up matrices - use the global world size constants
+        const float gridScale = worldSize / res; // Calculate grid scale
 
         shader.use();
         glm::mat4 model = glm::mat4(1.0f);
+        model = glm::scale(model, glm::vec3(gridScale));
         model = glm::translate(model, glm::vec3(-res * 0.5f, -res * 0.5f, -res * 0.5f));
 
         // --- Render marching cubes mesh ---
-        const auto &verts = mc.GetVertices();
+        const auto &verts = mc.getVertices();
         if (!verts.empty()) {
-            shader.use();
-            shader.setMat4("projection", projection);
-            shader.setMat4("view", view);
-            shader.setMat4("model", model);
-            shader.setVec3("viewPos", camera.Position);
-            shader.setFloat("material.shininess", 32.0f);
-            shader.setVec3("material.ambient", glm::vec3(0.3f, 0.5f, 0.8f));
-            shader.setVec3("material.diffuse", glm::vec3(0.3f, 0.5f, 0.8f));
-            shader.setVec3("material.specular", glm::vec3(0.8f));
-            shader.setVec3("dirLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
-            shader.setVec3("dirLight.ambient", glm::vec3(0.5f));
-            shader.setVec3("dirLight.diffuse", glm::vec3(0.8f));
-            shader.setVec3("dirLight.specular", glm::vec3(1.0f));
-            marchingCubesMesh.Draw(shader);
+            texturedShader.use();
+            texturedShader.setMat4("projection", projection);
+            texturedShader.setMat4("view", view);
+            texturedShader.setMat4("model", model);
+            texturedShader.setVec3("viewPos", camera.Position);
+            texturedShader.setFloat("material.shininess", 32.0f);
+            texturedShader.setVec3("material.ambient", glm::vec3(0.3f, 0.5f, 0.8f));
+            texturedShader.setVec3("material.specular", glm::vec3(0.8f));
+            texturedShader.setVec3("dirLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+            texturedShader.setVec3("dirLight.ambient", glm::vec3(0.5f));
+            texturedShader.setVec3("dirLight.diffuse", glm::vec3(0.8f));
+            texturedShader.setVec3("dirLight.specular", glm::vec3(1.0f));
+            
+            // Bind texture
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, diffuseTexture);
+            texturedShader.setInt("material_diffuse", 0);
+            
+            if (wireFrame) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            marchingCubesMesh.Draw(texturedShader);
         }
 
-        // --- FIX: Render wire cube with its own simple shader ---
-        glUseProgram(wireframeShaderProgram);
+    // Render wire cube
+    glUseProgram(wireframeShaderProgram);
     glUniformMatrix4fv(glGetUniformLocation(wireframeShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
     glUniformMatrix4fv(glGetUniformLocation(wireframeShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(glGetUniformLocation(wireframeShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
     glUniform3f(glGetUniformLocation(wireframeShaderProgram, "color"), 0.1f, 0.1f, 0.1f);
-    // Render the unit wire cube at the current cell center
+
+    // Render the unit wire cube at the current cell center (with same scaling as mesh)
     glm::mat4 cellModel = glm::mat4(1.0f);
+    cellModel = glm::scale(cellModel, glm::vec3(gridScale));
     glm::vec3 gridOffset = glm::vec3(-res * 0.5f, -res * 0.5f, -res * 0.5f);
     glm::vec3 gridCenter = glm::vec3((float)gx + 0.5f, (float)gy + 0.5f, (float)gz + 0.5f);
     cellModel = glm::translate(cellModel, gridOffset + gridCenter);
     glUniformMatrix4fv(glGetUniformLocation(wireframeShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cellModel));
     wireCube.render();
 
-    // Draw normals if requested (render as red lines from vertex position)
-    if (showNormals) {
-        glUseProgram(normalProgram);
-        glUniformMatrix4fv(glGetUniformLocation(normalProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(glGetUniformLocation(normalProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        // set model for normal shader so normals are in world space
-        glUniformMatrix4fv(glGetUniformLocation(normalProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        // normal length
-        glUniform1f(glGetUniformLocation(normalProgram, "normalLength"), 0.5f);
-
-        glBindVertexArray(normalVAO);
-        // Number of points = number of vertices in vlist
-        GLsizei pointCount = (GLsizei)mc.GetVertices().size();
-        glDrawArrays(GL_POINTS, 0, pointCount);
-        glBindVertexArray(0);
+    // Draw normals if requested (render as yellow lines from vertex positions)
+    if (showNormals && !verts.empty()) {
+        normalDebugShader.use();
+        normalDebugShader.setMat4("projection", projection);
+        normalDebugShader.setMat4("view", view);
+        normalDebugShader.setMat4("model", model);
+        normalDebugShader.setFloat("normalLength", 0.05f);
+        
+        // Render the mesh as triangles for normal visualization
+        marchingCubesMesh.Draw(normalDebugShader);
     }
 
     // Draw chunk bounds wireframe (toggleable with B)
     if (showChunkBox) {
-    // Calculate chunk model: position chunk center in grid space and scale to chunkSize
+    // Calculate chunk model: position chunk center in grid space and scale to chunkSize (with world scaling)
     glm::mat4 chunkModel = glm::mat4(1.0f);
+    chunkModel = glm::scale(chunkModel, glm::vec3(gridScale));
     glm::vec3 chunkCenter = glm::vec3((float)minX + chunkSize.x * 0.5f, (float)minY + chunkSize.y * 0.5f, (float)minZ + chunkSize.z * 0.5f);
     chunkModel = glm::translate(chunkModel, gridOffset + chunkCenter);
     chunkModel = glm::scale(chunkModel, chunkSize);
@@ -450,6 +443,7 @@ void processInput(GLFWwindow *window) {
     static bool nPrev=false, gPrev=false, cPrev=false, spacePrev=false, rightPrev=false;
     static bool hPrev = false;
     static bool bPrev = false;
+    static bool fPrev = false;
 
     bool nNow = glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS;
     if (nNow && !nPrev) stepNext = true;
@@ -460,11 +454,17 @@ void processInput(GLFWwindow *window) {
     rightPrev = rightNow;
 
     bool gNow = glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS;
-    if (gNow && !gPrev) generateAll = true;
+    if (gNow && !gPrev && canGenerate) {
+        generateAll = true;
+        canGenerate = false; // Block further generation until C is pressed
+    }
     gPrev = gNow;
 
     bool cNow = glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
-    if (cNow && !cPrev) clearMesh = true;
+    if (cNow && !cPrev) {
+        clearMesh = true;
+        canGenerate = true; // Allow generation again after clearing
+    }
     cPrev = cNow;
 
     bool spaceNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
@@ -478,6 +478,10 @@ void processInput(GLFWwindow *window) {
     bool bNow = glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS;
     if (bNow && !bPrev) showChunkBox = !showChunkBox;
     bPrev = bNow;
+
+    bool fNow = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+    if (fNow && !fPrev) wireFrame = !wireFrame;
+    fPrev = fNow;
 }
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
@@ -539,4 +543,38 @@ unsigned int createSimpleShaderProgram(const char* vsSource, const char* fsSourc
     glDeleteShader(fragmentShader);
 
     return shaderProgram;
+}
+
+unsigned int loadTexture(const char* path) {
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    
+    int width, height, nrComponents;
+    stbi_set_flip_vertically_on_load(true );
+    unsigned char *data = stbi_load(path, &width, &height, &nrComponents, 0);
+    if (data) {
+        GLenum format;
+        if (nrComponents == 1)
+            format = GL_RED;
+        else if (nrComponents == 3)
+            format = GL_RGB;
+        else if (nrComponents == 4)
+            format = GL_RGBA;
+
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+    } else {
+        std::cout << "Failed to load texture: " << path << std::endl;
+        stbi_image_free(data);
+    }
+
+    return textureID;
 }
