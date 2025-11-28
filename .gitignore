@@ -52,3 +52,4 @@ includes/
 # Object files
 *.o
 *.obj
+*.blend

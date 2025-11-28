@@ -209,6 +209,75 @@ endif()
 
 set_target_properties(testCPUBunny PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
+# Debug BVH executable
+add_executable(debugBVH
+    "Marching Cubes/debugBVH.cpp"
+    shader.cpp
+    mesh.cpp
+    model.cpp
+    ${GEOMETRY_SOURCES}
+    ${GLAD_SOURCES}
+)
+
+target_include_directories(debugBVH PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_directories(debugBVH PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
+target_link_libraries(debugBVH 
+    OpenGL::GL 
+    glfw
+    assimp-vc143-mt
+    zlibstatic
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(debugBVH PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(debugBVH PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+set_target_properties(debugBVH PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+
+# Rubik's Cube executable
+add_executable(RubiksCube
+    "Rubiks/window.cpp"
+    "Rubiks/RubiksCube.cpp"
+    "Rubiks/input.cpp"
+    "Rubiks/mouse_selector.cpp"
+    shader.cpp
+    mesh.cpp
+    model.cpp
+    ${GEOMETRY_SOURCES}
+    ${GLAD_SOURCES}
+)
+
+target_include_directories(RubiksCube PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_directories(RubiksCube PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
+target_link_libraries(RubiksCube 
+    OpenGL::GL 
+    glfw
+    assimp-vc143-mt
+    zlibstatic
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(RubiksCube PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(RubiksCube PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+set_target_properties(RubiksCube PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+
 # Platform-specific compiler settings
 if(WIN32 AND MSVC)
     set_property(TARGET ${PROJECT_NAME} PROPERTY VS_USER_PROPS "")
@@ -314,4 +383,16 @@ if(WIN32)
         "${SFML_BIN_DIR}/sfml-system-d-2.dll"
         "${SFML_BIN_DIR}/openal32.dll"
         $<TARGET_FILE_DIR:MarchingTest>)
+
+    # Copy Assimp DLL for debugBVH
+    add_custom_command(TARGET debugBVH POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
+        $<TARGET_FILE_DIR:debugBVH>)
+
+    # Copy Assimp DLL for RubiksCube
+    add_custom_command(TARGET RubiksCube POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
+        $<TARGET_FILE_DIR:RubiksCube>)
 endif()

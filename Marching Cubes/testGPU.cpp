@@ -12,6 +12,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 // Window settings
 const unsigned int SCR_WIDTH = 1200;
@@ -23,6 +24,14 @@ float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
+int MAX_DEPTH = 10;
+bool showBVH = true;
+bool showModel = true;
+
+// Key state tracking for debouncing
+bool bKeyPressed = false;
+bool mKeyPressed = false;
+
 // Timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -32,6 +41,106 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
+
+struct Triangle {
+    glm::vec3 v0, v1, v2;
+    glm::vec3 normal;
+};
+
+struct BoundingBox {
+    glm::vec3 min = glm::vec3(1e10f);
+    glm::vec3 max = glm::vec3(-1e10f);
+    glm::vec3 center = (min + max) * 0.5f;
+    unsigned int VAO = 0;
+    unsigned int VBO = 0;
+    unsigned int EBO = 0;
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+    void update(const glm::vec3& point) {
+        min = glm::min(min, point);
+        max = glm::max(max, point);
+        center = (min + max) * 0.5f;
+    }
+
+    void update(const Triangle& tri) {
+        update(tri.v0);
+        update(tri.v1);
+        update(tri.v2);
+    }
+
+    ~BoundingBox(){
+        if(VAO) glDeleteVertexArrays(1, &VAO);
+        if(VBO) glDeleteBuffers(1, &VBO);
+        if(EBO) glDeleteBuffers(1, &EBO);
+    }
+
+    void setupRender() {
+        if (VAO != 0) return; // Already setup
+        
+        glm::vec3 size = max - min;
+        float halfWidth = size.x / 2.0f;
+        float halfHeight = size.y / 2.0f;
+        float halfDepth = size.z / 2.0f;
+
+        GLfloat vertices[] = {
+            -halfWidth, -halfHeight, -halfDepth,
+            halfWidth, -halfHeight, -halfDepth,
+            halfWidth,  halfHeight, -halfDepth,
+            -halfWidth,  halfHeight, -halfDepth,
+            -halfWidth, -halfHeight,  halfDepth,
+            halfWidth, -halfHeight,  halfDepth,
+            halfWidth,  halfHeight,  halfDepth,
+            -halfWidth,  halfHeight,  halfDepth,
+        };
+
+        GLuint indices[] = {
+            0, 1, 1, 2, 2, 3, 3, 0, // Back face
+            4, 5, 5, 6, 6, 7, 7, 4, // Front face
+            0, 4, 1, 5, 2, 6, 3, 7  // Connecting lines
+        };
+
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArray(VAO);
+
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
+
+    void render() {
+        setupRender();
+        
+        glm::mat4 transform = glm::translate(glm::mat4(1.0f), center);
+        
+        glBindVertexArray(VAO);
+        glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+};
+
+struct Node {
+    BoundingBox bbox;
+    std::vector<Triangle> triangles;
+    Node* childA;
+    Node* childB;
+    bool isLeaf;
+    
+    ~Node() {
+        delete childA;
+        delete childB;
+    }
+};
 
 // Helper to compute distance from point to triangle and return closest point
 float distanceToTriangle(const glm::vec3& p, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3* outClosestPoint = nullptr) {
@@ -95,19 +204,155 @@ float distanceToTriangle(const glm::vec3& p, const glm::vec3& v0, const glm::vec
     return glm::distance(p, closest);
 }
 
+class BVH {
+public:
+    BoundingBox rootBBox;
+    Node* root;
+
+    BVH(const std::vector<Triangle>& triangles) {
+        root = buildBVH(triangles, 0);
+        rootBBox = root->bbox;
+    }
+    
+    ~BVH() {
+        delete root;
+    }
+
+    void renderBVH(Shader& shader, int targetDepth) {
+        if (root) {
+            renderNodeRecursive(root, shader, 0, targetDepth);
+        }
+    }
+
+    float queryDistance(const glm::vec3& point, glm::vec3* outClosestPoint = nullptr, glm::vec3* outNormal = nullptr) {
+        if (!root) return 1e10f;
+        
+        float bestDist = 1e10f;
+        glm::vec3 bestPoint, bestNormal;
+        queryDistanceRecursive(root, point, bestDist, bestPoint, bestNormal);
+        
+        if (outClosestPoint) *outClosestPoint = bestPoint;
+        if (outNormal) *outNormal = bestNormal;
+        return bestDist;
+    }
+
+private:
+    void queryDistanceRecursive(Node* node, const glm::vec3& point, 
+                               float& bestDist, glm::vec3& bestPoint, glm::vec3& bestNormal) {
+        if (!node) return;
+        
+        // Early exit if bounding box is too far
+        float boxDist = distanceToBox(point, node->bbox.min, node->bbox.max);
+        if (boxDist > bestDist) return;
+        
+        if (node->isLeaf) {
+            // Test all triangles in this leaf
+            for (const auto& tri : node->triangles) {
+                glm::vec3 closestPoint;
+                float dist = distanceToTriangle(point, tri.v0, tri.v1, tri.v2, &closestPoint);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestPoint = closestPoint;
+                    bestNormal = tri.normal;
+                }
+            }
+        } else {
+            // Recurse to children
+            queryDistanceRecursive(node->childA, point, bestDist, bestPoint, bestNormal);
+            queryDistanceRecursive(node->childB, point, bestDist, bestPoint, bestNormal);
+        }
+    }
+    
+    float distanceToBox(const glm::vec3& point, const glm::vec3& boxMin, const glm::vec3& boxMax) {
+        glm::vec3 closest = glm::clamp(point, boxMin, boxMax);
+        return glm::distance(point, closest);
+    }
+
+    void renderNodeRecursive(Node* node, Shader& shader, int currentDepth, int targetDepth) {
+        if (!node) return;
+        if (currentDepth == targetDepth) {
+            glm::vec3 color;
+            switch (currentDepth % 6) {
+                case 0: color = glm::vec3(1.0f, 0.0f, 0.0f); break; // Red - Root
+                case 1: color = glm::vec3(0.0f, 1.0f, 0.0f); break; // Green - Level 1
+                case 2: color = glm::vec3(0.0f, 0.0f, 1.0f); break; // Blue - Level 2
+                case 3: color = glm::vec3(1.0f, 1.0f, 0.0f); break; // Yellow - Level 3
+                case 4: color = glm::vec3(1.0f, 0.0f, 1.0f); break; // Magenta - Level 4
+                case 5: color = glm::vec3(0.0f, 1.0f, 1.0f); break; // Cyan - Level 5
+            }
+            
+            // Set model matrix to center the box at its center
+            glm::mat4 boxModel = glm::translate(glm::mat4(1.0f), node->bbox.center);
+            shader.setMat4("model", boxModel);
+            shader.setVec3("color", color);
+            
+            node->bbox.render();
+        }
+        
+        // Continue traversing children
+        if (currentDepth < targetDepth && !node->isLeaf) {
+            if (node->childA) renderNodeRecursive(node->childA, shader, currentDepth + 1, targetDepth);
+            if (node->childB) renderNodeRecursive(node->childB, shader, currentDepth + 1, targetDepth);
+        }
+    }
+    Node* buildBVH(const std::vector<Triangle>& triangles, int depth) {
+        Node* node = new Node();
+        for (const auto& tri : triangles) {
+            node->bbox.update(tri);
+        }
+
+        if (triangles.size() <= 2 || depth >= MAX_DEPTH) {
+            node->triangles = triangles;
+            node->isLeaf = true;
+            node->childA = nullptr;
+            node->childB = nullptr;
+            return node;
+        }
+
+        // Split along longest axis
+        glm::vec3 extent = node->bbox.max - node->bbox.min;
+        int axis = 0;
+        if (extent.y > extent.x && extent.y > extent.z) axis = 1;
+        else if (extent.z > extent.x) axis = 2;
+
+        float splitPos = node->bbox.min[axis] + extent[axis] * 0.5f;
+
+        std::vector<Triangle> leftTris, rightTris;
+        for (const auto& tri : triangles) {
+            float centroid = (tri.v0[axis] + tri.v1[axis] + tri.v2[axis]) / 3.0f;
+            if (centroid < splitPos) leftTris.push_back(tri);
+            else rightTris.push_back(tri);
+        }
+
+        // Where all triangles go to one side
+        if (leftTris.empty() || rightTris.empty()) {
+            leftTris.clear();
+            rightTris.clear();
+            for (size_t i = 0; i < triangles.size(); ++i) {
+                if (i < triangles.size() / 2) leftTris.push_back(triangles[i]);
+                else rightTris.push_back(triangles[i]);
+            }
+        }
+
+        node->childA = buildBVH(leftTris, depth + 1);
+        node->childB = buildBVH(rightTris, depth + 1);
+        node->isLeaf = false;
+        return node;
+    }
+};
+
 // Helper function to generate a signed distance field from a mesh
 std::vector<float> generateSDFFromMesh(
     const Model& model,
     int gridSizeX, int gridSizeY, int gridSizeZ,
-    glm::vec3& outBoundsMin, glm::vec3& outBoundsMax)
+    glm::vec3& outBoundsMin, glm::vec3& outBoundsMax, 
+    BVH* modelBVH = nullptr)
 {
     // Collect all triangles with their normals
-    struct Triangle {
-        glm::vec3 v0, v1, v2;
-        glm::vec3 normal;
-    };
     std::vector<Triangle> triangles;
-    
+
+    // Create Bounding Box for the model
+
     outBoundsMin = glm::vec3(1e10f);
     outBoundsMax = glm::vec3(-1e10f);
     
@@ -170,17 +415,25 @@ std::vector<float> generateSDFFromMesh(
                 );
                 
                 // Find minimum distance to any triangle and track closest
-                float minDist = 1e10f;
+                float minDist;
                 glm::vec3 closestPoint;
                 glm::vec3 closestNormal;
                 
-                for (const auto& tri : triangles) {
-                    glm::vec3 currentClosest;
-                    float dist = distanceToTriangle(gridPos, tri.v0, tri.v1, tri.v2, &currentClosest);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        closestPoint = currentClosest;
-                        closestNormal = tri.normal;
+                if (modelBVH) {
+                    // Use BVH for fast distance queries
+                    minDist = modelBVH->queryDistance(gridPos, &closestPoint, &closestNormal);
+                } else {
+                    // Fallback to brute force
+                    minDist = 1e10f;
+                    
+                    for (const auto& tri : triangles) {
+                        glm::vec3 currentClosest;
+                        float dist = distanceToTriangle(gridPos, tri.v0, tri.v1, tri.v2, &currentClosest);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestPoint = currentClosest;
+                            closestNormal = tri.normal;
+                        }
                     }
                 }
                 
@@ -251,12 +504,34 @@ int main()
     // Load shaders
     std::cout << "Loading shaders..." << std::endl;
     Shader marchShader("shaders/vertex.vs", "shaders/simple_fragment.fs");
+    Shader boxShader("shaders/box.vs", "shaders/box.fs");
     std::cout << "Shaders loaded successfully" << std::endl;
     
     // Load the Stanford bunny model
     std::cout << "Loading Stanford bunny model..." << std::endl;
     Model bunnyModel("models/stanford-bunny/source/bunny.obj");
     std::cout << "Model loaded with " << bunnyModel.meshes.size() << " mesh(es)" << std::endl;
+
+    BoundingBox boundingBox;
+    // Collect all triangles and compute bounding box
+    std::vector<Triangle> allTriangles;
+    for (const auto& mesh : bunnyModel.meshes) {
+        for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+            Triangle tri;
+            tri.v0 = glm::vec3(mesh.vertices[mesh.indices[i]].Position);
+            tri.v1 = glm::vec3(mesh.vertices[mesh.indices[i + 1]].Position);
+            tri.v2 = glm::vec3(mesh.vertices[mesh.indices[i + 2]].Position);
+            glm::vec3 edge1 = tri.v1 - tri.v0;
+            glm::vec3 edge2 = tri.v2 - tri.v0;
+            tri.normal = glm::normalize(glm::cross(edge1, edge2));
+            allTriangles.push_back(tri);
+            boundingBox.update(tri);
+        }
+    }
+    
+    std::cout << "Building BVH with " << allTriangles.size() << " triangles..." << std::endl;
+    BVH* bvh = new BVH(allTriangles);
+    std::cout << "BVH construction completed" << std::endl;
     
     // Set grid resolution (higher = more detail)
     int gridSizeX = 80;
@@ -264,9 +539,15 @@ int main()
     int gridSizeZ = 80;
     
     // Generate SDF from bunny model first to get bounds
-    std::cout << "Generating signed distance field from bunny model..." << std::endl;
+    std::cout << "Generating signed distance field from bunny model using BVH acceleration..." << std::endl;
     glm::vec3 boundsMin, boundsMax;
-    std::vector<float> sdfGrid = generateSDFFromMesh(bunnyModel, gridSizeX, gridSizeY, gridSizeZ, boundsMin, boundsMax);
+    
+    auto startTime = std::chrono::high_resolution_clock::now();
+    std::vector<float> sdfGrid = generateSDFFromMesh(bunnyModel, gridSizeX, gridSizeY, gridSizeZ, boundsMin, boundsMax, bvh);
+    auto endTime = std::chrono::high_resolution_clock::now();
+    
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    std::cout << "SDF generation completed in " << duration.count() << " ms using BVH acceleration" << std::endl;
     
     if (sdfGrid.empty()) {
         std::cerr << "Failed to generate SDF grid" << std::endl;
@@ -362,37 +643,48 @@ int main()
         // Render
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
+
         // Set up matrices
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::rotate(model, currentFrame * glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        // model = glm::rotate(model, currentFrame * glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         // Model is already in world space, no transformation needed
         
-        // Render the marched mesh
-        marchShader.use();
-        marchShader.setMat4("projection", projection);
-        marchShader.setMat4("view", view);
-        marchShader.setMat4("model", model);
+        if (showModel) {
+            // Render the marched mesh
+            marchShader.use();
+            marchShader.setMat4("projection", projection);
+            marchShader.setMat4("view", view);
+            marchShader.setMat4("model", model);
+            
+            // Set lighting
+            marchShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+            marchShader.setVec3("viewPos", camera.Position);
+            marchShader.setVec3("dirLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+            marchShader.setVec3("dirLight.ambient", glm::vec3(0.6f, 0.6f, 0.6f));
+            marchShader.setVec3("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
+            marchShader.setVec3("dirLight.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+            
+            // Set material
+            marchShader.setVec3("material.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
+            marchShader.setVec3("material.diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
+            marchShader.setVec3("material.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+            marchShader.setFloat("material.shininess", 32.0f);
+            
+            // Render
+            glBindVertexArray(marchVAO);
+            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
+        }
+
+        // Render BVH Bounding Boxes
+        if (showBVH) {
+            boxShader.use();
+            boxShader.setMat4("projection", projection);
+            boxShader.setMat4("view", view);
+            bvh->renderBVH(boxShader, MAX_DEPTH);
+        }
         
-        // Set lighting
-        marchShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-        marchShader.setVec3("viewPos", camera.Position);
-        marchShader.setVec3("dirLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
-        marchShader.setVec3("dirLight.ambient", glm::vec3(0.6f, 0.6f, 0.6f));
-        marchShader.setVec3("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-        marchShader.setVec3("dirLight.specular", glm::vec3(1.0f, 1.0f, 1.0f));
-        
-        // Set material
-        marchShader.setVec3("material.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
-        marchShader.setVec3("material.diffuse", glm::vec3(0.8f, 0.8f, 0.8f));
-        marchShader.setVec3("material.specular", glm::vec3(1.0f, 1.0f, 1.0f));
-        marchShader.setFloat("material.shininess", 32.0f);
-        
-        // Render
-        glBindVertexArray(marchVAO);
-        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
         
         // Swap buffers and poll events
         glfwSwapBuffers(window);
@@ -428,6 +720,22 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
+    
+    // Handle B key with debouncing
+    bool bCurrentlyPressed = glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS;
+    if (bCurrentlyPressed && !bKeyPressed) {
+        showBVH = !showBVH;
+        std::cout << "BVH display: " << (showBVH ? "ON" : "OFF") << std::endl;
+    }
+    bKeyPressed = bCurrentlyPressed;
+    
+    // Handle M key with debouncing
+    bool mCurrentlyPressed = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
+    if (mCurrentlyPressed && !mKeyPressed) {
+        showModel = !showModel;
+        std::cout << "Model display: " << (showModel ? "ON" : "OFF") << std::endl;
+    }
+    mKeyPressed = mCurrentlyPressed;
 }
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)

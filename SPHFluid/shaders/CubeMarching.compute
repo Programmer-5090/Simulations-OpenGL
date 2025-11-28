@@ -1,0 +1,247 @@
+#version 430
+
+struct Vertex {
+    vec3 Position;
+    float pad0; // padding to match std430 (vec3 -> 16 bytes)
+    vec3 Normal;
+    float pad1;
+    vec2 TexCoord;
+    float pad2;
+    float pad3; // total size now 48 bytes to match CPU-side struct
+};
+
+struct Triangle {
+    uint vertexIndices[3];
+};
+
+struct GridCell {
+    Vertex vertices[8];
+    float cornerValues[8];
+};
+
+layout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;
+
+layout(binding = 0, r32f) uniform readonly image3D densityTexture;
+
+layout(std430, binding = 1) writeonly buffer VertexBuffer {
+    Vertex vertices[];
+};
+
+layout(std430, binding = 2) writeonly buffer IndexBuffer {
+    uint indices[];
+};
+
+layout(std430, binding = 3) readonly buffer edgeTableBuffer {
+    int edgeTable[256];
+};
+
+layout(std430, binding = 4) readonly buffer triTableBuffer {
+    int triTable[4096];
+};
+
+layout(std430, binding = 5) readonly buffer edgeToVertexBuffer {
+    uvec2 edgeToVertex[12];
+};
+
+layout(std430, binding = 6) buffer AtomicCounters {
+    uint vertexCount;
+    uint indexCount;
+};
+
+// Uniforms
+const uint CORNER_COUNT = 8u;
+
+uniform float isolevel;
+uniform uint sizeX;
+uniform uint sizeY;
+uniform uint sizeZ;
+uniform vec3 boundsMin;
+uniform vec3 boundsMax;
+
+float getValueAt(uint x, uint y, uint z) {
+    if (x >= sizeX || y >= sizeY || z >= sizeZ) return 0.0;
+    return imageLoad(densityTexture, ivec3(x, y, z)).r;
+}
+
+// Simple bounds check for a cube that needs (x, x+1), (y, y+1), (z, z+1)
+bool cubeHasNeighbors(uint x, uint y, uint z) {
+    return (x + 1u < sizeX) && (y + 1u < sizeY) && (z + 1u < sizeZ);
+}
+
+void getCubeIndex(in GridCell cell, out uint cubeIndex) {
+    cubeIndex = 0u;
+    for (uint i = 0u; i < CORNER_COUNT; ++i) {
+        if (cell.cornerValues[i] < isolevel) {
+            cubeIndex |= (1u << i);
+        }
+    }
+}
+
+void interpolateVertices(in GridCell cell, in uint cubeIndex, out Vertex interpolated[12]) {
+    // Initialize all vertices
+    for (int i = 0; i < 12; ++i) {
+        interpolated[i].Position = vec3(0.0);
+        interpolated[i].Normal = vec3(0.0);
+        interpolated[i].TexCoord = vec2(0.0);
+    }
+    
+    int intersectionKey = edgeTable[cubeIndex];
+    for (uint ii = 0u; ii < 12u; ++ii) {
+        if ((intersectionKey & (1 << int(ii))) != 0) {
+            int i = int(ii);
+            uint v1 = edgeToVertex[i].x;
+            uint v2 = edgeToVertex[i].y;
+            float val1 = cell.cornerValues[v1];
+            float val2 = cell.cornerValues[v2];
+            float denom = val2 - val1;
+            float t = (abs(denom) < 1e-6) ? 0.5 : (isolevel - val1) / denom;
+
+            Vertex vert1 = cell.vertices[v1];
+            Vertex vert2 = cell.vertices[v2];
+            interpolated[i].Position = mix(vert1.Position, vert2.Position, t);
+            interpolated[i].Normal = vec3(0.0);
+            interpolated[i].TexCoord = vert1.TexCoord * (1.0 - t) + vert2.TexCoord * t;
+        }
+    }
+}
+
+void generateTriangles(in Vertex edgeVertices[12], in uint cubeIndex, out Triangle triangles[5], out uint triangleCount) {
+    triangleCount = 0u;
+    uint tableOffset = cubeIndex * 16u;
+    
+    for (uint i = 0u; i < 16u; i += 3u) {
+        int a = triTable[tableOffset + i];
+        if (a == -1) break; // Sentinel value
+        int b = triTable[tableOffset + i + 1u];
+        int c = triTable[tableOffset + i + 2u];
+
+        Triangle tri;
+        tri.vertexIndices[0] = uint(a);
+        tri.vertexIndices[1] = uint(b);
+        tri.vertexIndices[2] = uint(c);
+        triangles[triangleCount] = tri;
+        triangleCount++;
+        if (triangleCount >= 5u) break;
+    }
+}
+
+void calculateFaceNormal(in Vertex verts[3], out vec3 normal) {
+    vec3 edge1 = verts[1].Position - verts[0].Position;
+    vec3 edge2 = verts[2].Position - verts[0].Position;
+    vec3 crossProd = cross(edge1, edge2);
+    float len = length(crossProd);
+    if (len > 1e-8) {
+        normal = crossProd / len;
+    } else {
+        normal = vec3(0.0, 1.0, 0.0);
+    }
+}
+
+void processCube(uint x, uint y, uint z) {
+    // Bounds: require neighbors at +1 in each axis
+    if (!cubeHasNeighbors(x, y, z)) {
+        return;
+    }
+
+    GridCell cell;
+    // Fill corner scalar values (order: bottom face z, then top face z+1)
+    cell.cornerValues[0] = getValueAt(x,      y,      z);
+    cell.cornerValues[1] = getValueAt(x + 1u, y,      z);
+    cell.cornerValues[2] = getValueAt(x + 1u, y + 1u, z);
+    cell.cornerValues[3] = getValueAt(x,      y + 1u, z);
+    cell.cornerValues[4] = getValueAt(x,      y,      z + 1u);
+    cell.cornerValues[5] = getValueAt(x + 1u, y,      z + 1u);
+    cell.cornerValues[6] = getValueAt(x + 1u, y + 1u, z + 1u);
+    cell.cornerValues[7] = getValueAt(x,      y + 1u, z + 1u);
+
+    // Fill vertex positions - convert from grid space to world space
+    float fx = float(x);
+    float fy = float(y);
+    float fz = float(z);
+    
+    // Grid with N points has N-1 cells, so we divide by (size - 1) not size
+    float gridSizeX = max(1.0, float(sizeX - 1u));
+    float gridSizeY = max(1.0, float(sizeY - 1u));
+    float gridSizeZ = max(1.0, float(sizeZ - 1u));
+    
+    vec3 gridScale = (boundsMax - boundsMin) / vec3(gridSizeX, gridSizeY, gridSizeZ);
+    
+    // Convert grid positions to world positions
+    cell.vertices[0].Position = boundsMin + vec3(fx,       fy,       fz)       * gridScale;
+    cell.vertices[1].Position = boundsMin + vec3(fx + 1.0, fy,       fz)       * gridScale;
+    cell.vertices[2].Position = boundsMin + vec3(fx + 1.0, fy + 1.0, fz)       * gridScale;
+    cell.vertices[3].Position = boundsMin + vec3(fx,       fy + 1.0, fz)       * gridScale;
+    cell.vertices[4].Position = boundsMin + vec3(fx,       fy,       fz + 1.0) * gridScale;
+    cell.vertices[5].Position = boundsMin + vec3(fx + 1.0, fy,       fz + 1.0) * gridScale;
+    cell.vertices[6].Position = boundsMin + vec3(fx + 1.0, fy + 1.0, fz + 1.0) * gridScale;
+    cell.vertices[7].Position = boundsMin + vec3(fx,       fy + 1.0, fz + 1.0) * gridScale;
+
+    // Normal placeholders
+    for (int i = 0; i < 8; ++i) {
+        cell.vertices[i].Normal = vec3(0.0);
+    }
+
+    // Texcoords normalized across grid
+    cell.vertices[0].TexCoord = vec2(fx / gridSizeX,           fy / gridSizeY);
+    cell.vertices[1].TexCoord = vec2((fx + 1.0) / gridSizeX,   fy / gridSizeY);
+    cell.vertices[2].TexCoord = vec2((fx + 1.0) / gridSizeX,   (fy + 1.0) / gridSizeY);
+    cell.vertices[3].TexCoord = vec2(fx / gridSizeX,           (fy + 1.0) / gridSizeY);
+    cell.vertices[4].TexCoord = vec2(fx / gridSizeX,           fy / gridSizeY);
+    cell.vertices[5].TexCoord = vec2((fx + 1.0) / gridSizeX,   fy / gridSizeY);
+    cell.vertices[6].TexCoord = vec2((fx + 1.0) / gridSizeX,   (fy + 1.0) / gridSizeY);
+    cell.vertices[7].TexCoord = vec2(fx / gridSizeX,           (fy + 1.0) / gridSizeY);
+
+    // Compute cube index and interpolate edge vertices
+    uint cubeIndex;
+    getCubeIndex(cell, cubeIndex);
+
+    // Early exit for empty/full cubes
+    if (cubeIndex == 0u || cubeIndex == 255u) {
+        return;
+    }
+
+    Vertex edgeVertices[12];
+    interpolateVertices(cell, cubeIndex, edgeVertices);
+
+    Triangle triangles[5];
+    uint triCount;
+    generateTriangles(edgeVertices, cubeIndex, triangles, triCount);
+
+    if (triCount == 0u) return;
+
+    // Reserve space in SSBOs atomically (3 vertices per triangle)
+    uint vertsNeeded = triCount * 3u;
+    uint baseVertex = atomicAdd(vertexCount, vertsNeeded);
+    uint baseIndex = atomicAdd(indexCount, vertsNeeded);
+
+    // Write out vertices and indices
+    for (uint t = 0u; t < triCount; ++t) {
+        Vertex triVerts[3];
+        triVerts[0] = edgeVertices[triangles[t].vertexIndices[0]];
+        triVerts[1] = edgeVertices[triangles[t].vertexIndices[1]];
+        triVerts[2] = edgeVertices[triangles[t].vertexIndices[2]];
+
+        vec3 faceNormal;
+        calculateFaceNormal(triVerts, faceNormal);
+
+        // Apply normal to all vertices (flat shading)
+        triVerts[0].Normal = faceNormal;
+        triVerts[1].Normal = faceNormal;
+        triVerts[2].Normal = faceNormal;
+
+        // Write vertices and indices
+        for (uint j = 0u; j < 3u; ++j) {
+            uint outVertexIdx = baseVertex + t * 3u + j;
+            vertices[outVertexIdx] = triVerts[j];
+            indices[baseIndex + t * 3u + j] = outVertexIdx;
+        }
+    }
+}
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint z = gl_GlobalInvocationID.z;
+    
+    processCube(x, y, z);
+}

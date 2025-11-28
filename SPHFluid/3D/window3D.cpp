@@ -186,13 +186,27 @@ int main() {
     boxShader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow color for the box
     boundingBox.Render(view, projection);
 
-        // Render Particles
-        particleShader.use();
-        particleShader.setMat4("projection", projection);
-        particleShader.setMat4("view", view);
-        particleShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
-        particleShader.setVec3("viewPos", camera.Position);
-        particleDisplay.Render(view, projection);
+        // // Render Particles
+        // particleShader.use();
+        // particleShader.setMat4("projection", projection);
+        // particleShader.setMat4("view", view);
+        // particleShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
+        // particleShader.setVec3("viewPos", camera.Position);
+        // particleDisplay.Render(view, projection);
+
+        // After particle rendering or instead of it:
+        static Shader meshShader("SPHFluid/shaders/fluidMesh3d.vs", "SPHFluid/shaders/fluidMesh3d.fs");
+        meshShader.use();
+        meshShader.setMat4("projection", projection);
+        meshShader.setMat4("view", view);
+        glm::mat4 meshModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, worldYOffset, 0.0f));
+        meshShader.setMat4("model", meshModel);
+        meshShader.setVec3("fluidColor", glm::vec3(0.2f, 0.5f, 0.9f));
+        meshShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
+        meshShader.setVec3("viewPos", camera.Position);
+
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_CULL_FACE);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
