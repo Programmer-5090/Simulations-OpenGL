@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <cmath>
 
-// Window settings
 const unsigned int SCR_WIDTH = 1200;
 const unsigned int SCR_HEIGHT = 900;
 
@@ -23,17 +22,14 @@ bool showModel = true;
 bool needsRebuild = false; 
 int currentViewDepth = 0;
 
-// Camera
 Camera camera(glm::vec3(0.0f, 0.5f, 2.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// Timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-// Callbacks
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -235,7 +231,6 @@ private:
 
 int main()
 {
-    // Initialize GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -263,19 +258,16 @@ int main()
         return -1;
     }
     
-    // Configure OpenGL
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Load shaders
     std::cout << "Loading shaders..." << std::endl;
     Shader modelShader("shaders/vertex.vs", "shaders/simple_fragment.fs");
     Shader boxShader("shaders/box.vs", "shaders/box.fs");
     std::cout << "Shaders loaded successfully" << std::endl;
 
     
-    // Load the Stanford bunny model
     std::cout << "Loading Stanford bunny model..." << std::endl;
     Model bunnyModel("models/stanford-bunny/source/bunny.obj");
     std::cout << "Model loaded with " << bunnyModel.meshes.size() << " mesh(es)" << std::endl;
@@ -312,18 +304,14 @@ int main()
     std::cout << "Current view depth: " << currentViewDepth << std::endl;
     std::cout << "===============\n" << std::endl;
     
-    // Render loop
     std::cout << "Starting render loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
-        // Per-frame time logic
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
         
-        // Input
         processInput(window);
         
-        // Rebuild BVH if depth changed
         if (needsRebuild) {
             delete bvh;
             bvh = new BVH(allTriangles);
@@ -331,16 +319,13 @@ int main()
             needsRebuild = false;
         }
         
-        // Render
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        // Set up matrices
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
         
-        // Render BVH Bounding Boxes
         if (showBVH) {
             boxShader.use();
             boxShader.setMat4("projection", projection);
@@ -348,7 +333,6 @@ int main()
             bvh->renderBVH(boxShader, currentViewDepth);
         }
 
-        // Render the mesh
         if (showModel) {
             modelShader.use();
             modelShader.setMat4("projection", projection);
@@ -369,16 +353,13 @@ int main()
             modelShader.setVec3("material.specular", glm::vec3(1.0f, 1.0f, 1.0f));
             modelShader.setFloat("material.shininess", 32.0f);
             
-            // Render
             bunnyModel.Draw(modelShader);
         }
         
-        // Swap buffers and poll events
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     
-    // Cleanup
     std::cout << "Cleaning up..." << std::endl;
     delete bvh;
     bunnyModel.meshes.clear();
@@ -387,7 +368,6 @@ int main()
     return 0;
 }
 
-// Input callback functions
 void processInput(GLFWwindow *window)
 {
     static bool bKeyPressed = false;

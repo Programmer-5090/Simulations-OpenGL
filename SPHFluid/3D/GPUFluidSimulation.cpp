@@ -47,8 +47,6 @@ bool GPUFluidSimulation::InitializeGPU() {
 void GPUFluidSimulation::InitializeParticles() {
     std::vector<GPUParticle> particles(numParticles);
 
-    // Use a grid spawn so we can control spacing between particles.
-    // spawnCenter is the center of the initial particle block in simulation space.
     glm::vec3 spawnCenter(0.0f, 0.0f, 0.0f);
 
     int particlesPerSide = std::max(1, static_cast<int>(std::cbrt(static_cast<float>(numParticles))) + 1);
@@ -57,13 +55,9 @@ void GPUFluidSimulation::InitializeParticles() {
     std::uniform_real_distribution<float> dis(-0.02f, 0.02f);
 
     int particleIndex = 0;
-    // Determine spacing based on smoothing radius. A smaller spacingFactor makes
-    // particles closer together. Default lowered to 0.6 to reduce inter-particle gaps.
     float spacingFactor = 0.6f; // smaller -> particles closer; tweak as needed
     float desiredSpacing = settings.smoothingRadius * spacingFactor;
 
-    // Ensure the particle cube fits inside the simulation bounds. Compute the
-    // maximum allowed spacing so the overall grid extent <= 90% of the smallest bound.
     int maxIndex = std::max(0, particlesPerSide - 1);
     float minBound = std::min(std::min(settings.boundsSize.x, settings.boundsSize.y), settings.boundsSize.z);
     float maxAllowedSpacing = 0.0f;
@@ -123,7 +117,6 @@ void GPUFluidSimulation::UpdateConstants() {
 void GPUFluidSimulation::RunComputeKernel(KernelType kernel) {
     glUseProgram(fluidComputeProgram);
 
-    // Bind buffers
     ComputeHelper::BindBuffer(particleBuffer, 0);
     ComputeHelper::BindBuffer(spatialLookupBuffer, 1);
     ComputeHelper::BindBuffer(startIndicesBuffer, 2);

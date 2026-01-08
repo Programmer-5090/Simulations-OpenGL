@@ -135,7 +135,7 @@ Use the provided VS Code tasks (Terminal → Run Task…):
 2) CMake Build (Windows) — builds all targets in Debug
 3) CMake Build Release (Windows) — builds in Release (optional)
 
-Executables are written to `output/Debug/` and `output/Release/` (per configuration).
+Executables now land under `output/<TargetName>/<Config>/` (for example `output/OpenGLProject/Debug/OpenGLProject.exe`), so each folder is self-contained and ready to share.
 
 Tip: A Visual Studio solution is generated at `build/OpenGLProject.sln` if you prefer opening it directly in VS.
 
@@ -157,6 +157,10 @@ Optional maintenance and alt build:
 
 - Clean Build — removes build artifacts
 - MinGW Build (Alternative) — experimental GCC build for quick checks
+
+## Shareable bundles
+
+Each executable now has an isolated runtime folder under `output/<Target>/<Config>/` that contains the binary, required DLLs, and only the assets it truly needs (for example, `RubiksCube` ships just its two shader pairs plus the single cube texture and solver tables). Zip that directory to share a standalone build of that specific program.
 
 Note on shader paths: executables load shaders relative to the repo root (e.g., `SPHFluid/shaders/...`). Make sure your current directory is the project root (the VS Code tasks already do this).
 

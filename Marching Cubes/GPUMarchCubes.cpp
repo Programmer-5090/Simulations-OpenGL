@@ -165,7 +165,6 @@ void GPUMarchCubes::execute()
     GLuint numGroupsY = (numCubesY + 3) / 4;
     GLuint numGroupsZ = (numCubesZ + 0) / 1;
     
-    // Dispatch compute shader
     ComputeHelper::Dispatch(computeProgram, numGroupsX, numGroupsY, numGroupsZ);
 
     // Read back the number of generated vertices and indices

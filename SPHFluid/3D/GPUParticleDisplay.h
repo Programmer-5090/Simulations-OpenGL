@@ -6,15 +6,14 @@
 #include <vector>
 #include "Shader.h"
 #include "GPUFluidSimulation.h"
-#include "geometry/sphere.h" // Use the sphere class for rendering
-#include "mesh.h"   // For converting parametric geometry to a renderable mesh (VAO/EBO)
+#include "geometry/sphere.h"
+#include "mesh.h"
 
 class GPUParticleDisplay {
 public:
     GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader);
     ~GPUParticleDisplay();
 
-    void Update();
     void Render(const glm::mat4& view, const glm::mat4& projection);
 
     // Visually offset particle positions without affecting simulation physics
@@ -23,15 +22,14 @@ public:
 private:
     void InitializeRenderingResources();
     void CreateGradientTexture();
-    void UpdateInstanceData();
 
     GPUFluidSimulation* simulation;
     Shader* particleShader;
     Sphere* particleMesh;
-    Mesh* particleRenderMesh; // Mesh created from the Sphere's GeometryData
+    Mesh* particleRenderMesh;
 
-    GLuint instanceVBO_positions; // VBO for instance positions
-    GLuint instanceVBO_velocities; // VBO for instance velocities
+    GLuint instanceVBO_positions;
+    GLuint instanceVBO_velocities;
     GLuint gradientTexture;
 
     glm::vec3 worldOffset = glm::vec3(0.0f);

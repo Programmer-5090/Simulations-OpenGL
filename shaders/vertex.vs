@@ -17,14 +17,11 @@ uniform mat4 projection;
 
 void main()
 {
-	// note that we read the multiplication from right to left
 	gl_Position = projection * view * model * vec4(aPos, 1.0);
 	TexCoords = vec2(aTexCoord.x, aTexCoord.y);
 	FragPos = vec3(model * vec4(aPos, 1.0));
 	LocalPos = aPos;
 	
-	// Transform normals to world space using the normal matrix
-	// The normal matrix is the transpose of the inverse of the upper-left 3x3 of the model matrix
 	Normal = mat3(transpose(inverse(model))) * aNormal;
 	LocalNormal = aNormal;
 }

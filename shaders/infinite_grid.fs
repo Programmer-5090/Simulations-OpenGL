@@ -110,5 +110,9 @@ void main()
 
     Color.a *= gGridAlpha;
 
+    if (Color.a < 0.01) {
+        discard;
+    }
+
     FragColor = Color;
 }

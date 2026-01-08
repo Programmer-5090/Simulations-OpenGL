@@ -61,21 +61,17 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 
-// Settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-// Camera
 Camera camera(glm::vec3(-4.0f, 2.0f, 45.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// Timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-// Marching Cubes globals
 CubeMarching mc;
 Mesh marchingCubesMesh;
 int res = 16; // lower for stepwise view
@@ -95,7 +91,6 @@ bool showNormals = false;   // toggle normal visualization (H)
 bool showChunkBox = true;   // toggle chunk box visibility (B)
 bool wireFrame = false;    // toggle wireframe mode (W)
 
-// State tracking for generation blocking
 bool canGenerate = true;    // Allow generation (blocked after G until C is pressed)
 
 WireCube chunkWire;
@@ -129,24 +124,21 @@ int main() {
     }
 
     glEnable(GL_DEPTH_TEST);
-    glLineWidth(1.5f); // Make wireframe lines a bit thicker
+    glLineWidth(1.5f);
 
      if (!audio.load("audio/beep.wav")) {
         std::cerr << "Failed to load audio file!" << std::endl;
     }
 
-    // Shaders
     Shader shader("shaders/vertex.vs", "shaders/simple_fragment.fs");
     Shader texturedShader("shaders/vertex.vs", "shaders/textured_fragment.fs");
     Shader infiniteGridShader("shaders/infinite_grid.vs", "shaders/infinite_grid.fs");
 
-    // Load texture
     unsigned int diffuseTexture = loadTexture("img/textures/emoji.png");
     
     unsigned int gridVAO;
     glGenVertexArrays(1, &gridVAO);
     
-    // --- FIX: Create a dedicated simple shader for the wireframe cube ---
     const char* wire_vs = R"glsl(
         #version 330 core
         layout (location = 0) in vec3 aPos;
@@ -170,11 +162,6 @@ int main() {
     // Normal debug shader using proper shader files
     Shader normalDebugShader("shaders/normal_debug.vs", "shaders/normal_debug.fs", "shaders/normal_debug.gs");
 
-    // showNormals is a global flag toggled by H
-
-
-    // Setup marching cubes - create a test scalar field
-    // Generate a simple sphere-like field for demonstration
     std::vector<std::vector<std::vector<float>>> scalarField(res, std::vector<std::vector<float>>(res, std::vector<float>(res, 0.0f)));
     
     // Calculate grid scale and sphere parameters
@@ -197,20 +184,15 @@ int main() {
     // Wire cube for the marching grid bounds
     wireCube.create(1.0f, 1.0f, 1.0f);
 
-    // Normal visualization will use the mesh directly via geometry shader
-
-    // Set grid bounds for visualization
     int minX = 0, minY = 0, minZ = 0;
     int maxX = res-1, maxY = res-1, maxZ = res-1;
     glm::vec3 chunkSize = glm::vec3((float)res, (float)res, (float)res);
     chunkWire.create(1.0f, 1.0f, 1.0f);
 
-    // stepping state (start at min coords)
     int gx = minX, gy = minY, gz = minZ;
     double lastStepTime = glfwGetTime();
     double stepInterval = 0.001; // seconds
 
-    // Render loop
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
@@ -218,20 +200,17 @@ int main() {
 
         processInput(window);
 
-        // --- Improved mesh generation & stepping logic ---
         bool meshNeedsUpdate = false;
         double now = glfwGetTime();
 
-        // Clear mesh when C is pressed
         if (clearMesh) {
-            mc.clearMesh(); // clear the marching cubes mesh
-            marchingCubesMesh = Mesh(); // clear the rendering mesh
-            gx = minX; gy = minY; gz = minZ; // reset stepping
+            mc.clearMesh();
+            marchingCubesMesh = Mesh();
+            gx = minX; gy = minY; gz = minZ;
             meshNeedsUpdate = true;
             clearMesh = false;
         }
 
-        // Generate full mesh when G is pressed
         if (generateAll) {
             mc.clearMesh();
             mc.generateMesh(scalarField, isolevel);
@@ -239,7 +218,6 @@ int main() {
             generateAll = false;
         }
 
-        // Single-step requests (N key or Right arrow) - process single cube
         if (stepNext || stepRight) {
             // Process the current cube and add it to the existing mesh
             mc.processSingleCube(scalarField, gx, gy, gz, isolevel);
@@ -315,16 +293,13 @@ int main() {
         glClearColor(0.9f, 0.92f, 0.95f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Render infinite grid FIRST (so spheres render on top)
         infiniteGridShader.use();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-        // Set up view-projection matrix for the grid
         glm::mat4 viewProjection = projection * view;
         infiniteGridShader.setMat4("gVP", viewProjection);
         infiniteGridShader.setVec3("gCameraWorldPos", camera.Position);
         
-        // Set grid parameters
         infiniteGridShader.setFloat("gGridSize", 100.0f);
         infiniteGridShader.setFloat("gGridMinPixelsBetweenCells", 2.0f);
         infiniteGridShader.setFloat("gGridCellSize", 0.025f);
@@ -334,7 +309,6 @@ int main() {
 
         glDepthMask(GL_FALSE);
 
-        // Bind VAO and render the infinite grid as triangles
         glBindVertexArray(gridVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -439,7 +413,6 @@ void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
     // Edge-detect a few control keys so a single press triggers once.
-    // We keep previous state statically so repeated frames don't re-trigger actions.
     static bool nPrev=false, gPrev=false, cPrev=false, spacePrev=false, rightPrev=false;
     static bool hPrev = false;
     static bool bPrev = false;

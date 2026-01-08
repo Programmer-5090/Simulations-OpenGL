@@ -18,6 +18,45 @@ include_directories(${CMAKE_SOURCE_DIR}/SPHFluid)
 include_directories(${CMAKE_SOURCE_DIR}/Collision System)
 include_directories(${CMAKE_SOURCE_DIR})
 
+function(configure_program_output target_name)
+    set_target_properties(${target_name} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/output/${target_name}")
+endfunction()
+
+set(RES_SHADERS shaders)
+set(RES_MODELS models)
+set(RES_IMG img)
+set(RES_RUBIKS_ASSETS Rubiks/assets)
+set(RES_RUBIKS_AUDIO "audio/Cube Turn 1.mp3" "audio/Cube Turn 2.mp3")
+set(RES_AUDIO_BEEP audio/beep.wav)
+set(RUBIKS_SHADER_FILES
+    shaders/infinite_grid.vs
+    shaders/infinite_grid.fs
+    shaders/vertex.vs
+    shaders/rubiks.fs
+)
+
+function(bundle_program_resources target_name)
+    if(NOT ARGN)
+        return()
+    endif()
+    set(_resource_list ${ARGN})
+    list(REMOVE_DUPLICATES _resource_list)
+    foreach(rel_path IN LISTS _resource_list)
+        set(src "${CMAKE_SOURCE_DIR}/${rel_path}")
+        set(dst "$<TARGET_FILE_DIR:${target_name}>/${rel_path}")
+        if(IS_DIRECTORY "${src}")
+            add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${src}" "${dst}")
+        elseif(EXISTS "${src}")
+            get_filename_component(dst_dir "${dst}" DIRECTORY)
+            add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${dst_dir}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${src}" "${dst}")
+        endif()
+    endforeach()
+endfunction()
+
 # Platform-specific settings for Windows MSVC
 if(WIN32 AND MSVC)
     set(ENV{C_INCLUDE_PATH} "")
@@ -48,6 +87,8 @@ list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/Collision System/window2d.cpp")
 list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/gpuFluidWindow.cpp")
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${GEOMETRY_SOURCES} ${GLAD_SOURCES})
+configure_program_output(${PROJECT_NAME})
+bundle_program_resources(${PROJECT_NAME} ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 # Collision System executable
 add_executable(CollisionSystem 
@@ -60,6 +101,8 @@ add_executable(CollisionSystem
     ${GEOMETRY_SOURCES} 
     ${GLAD_SOURCES}
 )
+configure_program_output(CollisionSystem)
+bundle_program_resources(CollisionSystem ${RES_SHADERS} ${RES_IMG})
 
 target_include_directories(CollisionSystem PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
@@ -85,6 +128,8 @@ add_executable(GPUFluidSim3D
     ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp 
     ${GLAD_SOURCES}
 )
+configure_program_output(GPUFluidSim3D)
+bundle_program_resources(GPUFluidSim3D ${RES_SHADERS})
 
 add_executable(GPUFluidSim2D 
     SPHFluid/2D/gpuFluidWindow.cpp
@@ -96,6 +141,8 @@ add_executable(GPUFluidSim2D
     ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp
     ${GLAD_SOURCES}
 )
+configure_program_output(GPUFluidSim2D)
+bundle_program_resources(GPUFluidSim2D ${RES_SHADERS})
 
 # SFML setup
 set(SFML_DIR "${CMAKE_SOURCE_DIR}/includes/SFML/SFML-2.6.1")
@@ -114,6 +161,8 @@ add_executable(MarchingTest
     ${GEOMETRY_SOURCES}
     ${GLAD_SOURCES}
 )
+configure_program_output(MarchingTest)
+bundle_program_resources(MarchingTest ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 target_include_directories(MarchingTest PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
@@ -139,7 +188,6 @@ if(WIN32 AND MSVC)
     target_compile_options(MarchingTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-set_target_properties(MarchingTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # GPU Marching Cubes test executable
 add_executable(testGPU
@@ -151,6 +199,8 @@ add_executable(testGPU
     ${GEOMETRY_SOURCES}
     ${GLAD_SOURCES}
 )
+configure_program_output(testGPU)
+bundle_program_resources(testGPU ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 target_include_directories(testGPU PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
@@ -171,9 +221,14 @@ if(WIN32 AND MSVC)
     target_compile_definitions(testGPU PRIVATE 
         WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
     target_compile_options(testGPU PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+    
+    add_custom_command(TARGET testGPU POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
+        "$<TARGET_FILE_DIR:testGPU>/assimp-vc143-mt.dll"
+    )
 endif()
 
-set_target_properties(testGPU PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # CPU Marching Cubes bunny test executable
 add_executable(testCPUBunny
@@ -185,6 +240,8 @@ add_executable(testCPUBunny
     ${GEOMETRY_SOURCES}
     ${GLAD_SOURCES}
 )
+configure_program_output(testCPUBunny)
+bundle_program_resources(testCPUBunny ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 target_include_directories(testCPUBunny PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
@@ -205,9 +262,14 @@ if(WIN32 AND MSVC)
     target_compile_definitions(testCPUBunny PRIVATE 
         WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
     target_compile_options(testCPUBunny PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+    
+    add_custom_command(TARGET testCPUBunny POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
+        "$<TARGET_FILE_DIR:testCPUBunny>/assimp-vc143-mt.dll"
+    )
 endif()
 
-set_target_properties(testCPUBunny PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # Debug BVH executable
 add_executable(debugBVH
@@ -218,6 +280,8 @@ add_executable(debugBVH
     ${GEOMETRY_SOURCES}
     ${GLAD_SOURCES}
 )
+configure_program_output(debugBVH)
+bundle_program_resources(debugBVH ${RES_SHADERS} ${RES_MODELS})
 
 target_include_directories(debugBVH PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
@@ -240,34 +304,48 @@ if(WIN32 AND MSVC)
     target_compile_options(debugBVH PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-set_target_properties(debugBVH PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # Rubik's Cube executable
 add_executable(RubiksCube
-    "Rubiks/window.cpp"
-    "Rubiks/RubiksCube.cpp"
-    "Rubiks/input.cpp"
-    "Rubiks/mouse_selector.cpp"
+    "Rubiks/src/window.cpp"
+    "Rubiks/src/RubiksCube.cpp"
+    "Rubiks/src/CubeStateMachine.cpp"
+    "Rubiks/src/CubeConversion.cpp"
+    "Rubiks/src/input.cpp"
+    "Rubiks/src/mouse_selector.cpp"
+    "Rubiks/src/ai rubiks.cpp"
+    "Rubiks/src/audio.cpp"
     shader.cpp
     mesh.cpp
     model.cpp
     ${GEOMETRY_SOURCES}
     ${GLAD_SOURCES}
 )
+configure_program_output(RubiksCube)
+bundle_program_resources(RubiksCube ${RUBIKS_SHADER_FILES} "img/textures/Rubiks Col.png" ${RES_RUBIKS_ASSETS} ${RES_RUBIKS_AUDIO})
 
 target_include_directories(RubiksCube PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
     ${CMAKE_SOURCE_DIR}/includes/glad
     ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}/Rubiks/include
     ${CMAKE_SOURCE_DIR}
+    ${SFML_INCLUDE_DIR}
 )
 
-target_link_directories(RubiksCube PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
+target_link_directories(RubiksCube PRIVATE 
+    ${CMAKE_SOURCE_DIR}/lib/assimp/lib
+    ${SFML_LIB_DIR}
+)
 target_link_libraries(RubiksCube 
     OpenGL::GL 
     glfw
     assimp-vc143-mt
     zlibstatic
+    optimized sfml-audio
+    optimized sfml-system
+    debug sfml-audio-d
+    debug sfml-system-d
 )
 
 if(WIN32 AND MSVC)
@@ -276,7 +354,6 @@ if(WIN32 AND MSVC)
     target_compile_options(RubiksCube PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-set_target_properties(RubiksCube PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # Platform-specific compiler settings
 if(WIN32 AND MSVC)
@@ -323,6 +400,8 @@ add_executable(AudioTest
     audio/sfml_audio_test.cpp
     audio/audio.cpp
 )
+configure_program_output(AudioTest)
+bundle_program_resources(AudioTest ${RES_AUDIO_BEEP})
 
 target_include_directories(AudioTest PRIVATE ${SFML_INCLUDE_DIR})
 target_link_directories(AudioTest PRIVATE ${SFML_LIB_DIR})
@@ -339,7 +418,6 @@ if(WIN32 AND MSVC)
     target_compile_options(AudioTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-set_target_properties(AudioTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # Optional SDL2 support
 find_package(PkgConfig QUIET)
@@ -351,11 +429,76 @@ if(PkgConfig_FOUND)
     endif()
 endif()
 
-# Set output directories
-set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
-set_target_properties(CollisionSystem PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
-set_target_properties(GPUFluidSim3D PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
-set_target_properties(GPUFluidSim2D PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
+# Headless Rubik's ID comparison test
+add_executable(RubiksStateTest
+    "Rubiks/tests/unit/state_validation.cpp"
+    "Rubiks/src/ai rubiks.cpp"
+    "Rubiks/src/CubeConversion.cpp"
+    "Rubiks/tests/support/RubiksCube_stubs.cpp"
+    "Rubiks/src/CubeStateMachine.cpp"
+)
+configure_program_output(RubiksStateTest)
+bundle_program_resources(RubiksStateTest ${RES_RUBIKS_ASSETS})
+
+target_include_directories(RubiksStateTest PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}/Rubiks/include
+    ${CMAKE_SOURCE_DIR}
+    ${SFML_INCLUDE_DIR}
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(RubiksStateTest PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(RubiksStateTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+target_link_directories(RubiksStateTest PRIVATE ${SFML_LIB_DIR})
+target_link_libraries(RubiksStateTest 
+    OpenGL::GL 
+    glfw
+    optimized sfml-audio
+    optimized sfml-system
+    debug sfml-audio-d
+    debug sfml-system-d
+)
+
+# Solver unit tests
+add_executable(RubiksSolverTest
+    "Rubiks/tests/unit/solver_test.cpp"
+    "Rubiks/src/ai rubiks.cpp"
+    "Rubiks/src/CubeConversion.cpp"
+    "Rubiks/tests/support/RubiksCube_stubs.cpp"
+)
+configure_program_output(RubiksSolverTest)
+bundle_program_resources(RubiksSolverTest ${RES_RUBIKS_ASSETS})
+
+target_include_directories(RubiksSolverTest PRIVATE
+    ${CMAKE_SOURCE_DIR}/includes
+    ${CMAKE_SOURCE_DIR}/includes/glad
+    ${CMAKE_SOURCE_DIR}/includes/glm
+    ${CMAKE_SOURCE_DIR}/Rubiks/include
+    ${CMAKE_SOURCE_DIR}
+    ${SFML_INCLUDE_DIR}
+)
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(RubiksSolverTest PRIVATE 
+        WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(RubiksSolverTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
+endif()
+
+target_link_directories(RubiksSolverTest PRIVATE ${SFML_LIB_DIR})
+target_link_libraries(RubiksSolverTest 
+    OpenGL::GL 
+    glfw
+    optimized sfml-audio
+    optimized sfml-system
+    debug sfml-audio-d
+    debug sfml-system-d
+)
 
 # Copy required DLLs on Windows
 if(WIN32)
@@ -383,6 +526,16 @@ if(WIN32)
         "${SFML_BIN_DIR}/sfml-system-d-2.dll"
         "${SFML_BIN_DIR}/openal32.dll"
         $<TARGET_FILE_DIR:MarchingTest>)
+
+    # Copy SFML DLLs for RubiksCube
+    add_custom_command(TARGET RubiksCube POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SFML_BIN_DIR}/sfml-audio-2.dll"
+        "${SFML_BIN_DIR}/sfml-audio-d-2.dll"
+        "${SFML_BIN_DIR}/sfml-system-2.dll"
+        "${SFML_BIN_DIR}/sfml-system-d-2.dll"
+        "${SFML_BIN_DIR}/openal32.dll"
+        $<TARGET_FILE_DIR:RubiksCube>)
 
     # Copy Assimp DLL for debugBVH
     add_custom_command(TARGET debugBVH POST_BUILD

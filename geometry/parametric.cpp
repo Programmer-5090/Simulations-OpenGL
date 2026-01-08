@@ -1,6 +1,6 @@
 #include "parametric.h"
-#include <cstdio>  // For printf debug output
-#include <algorithm>  // For std::min, std::max
+#include <cstdio>
+#include <algorithm>
 
 ParametricSurface::ParametricSurface() : GeometryData() {}
 

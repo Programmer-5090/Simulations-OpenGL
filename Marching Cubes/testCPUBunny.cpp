@@ -11,21 +11,17 @@
 #include <iostream>
 #include <vector>
 
-// Settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-// Camera
 Camera camera(glm::vec3(0.0f, 0.1f, 0.5f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// Timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-// Callbacks
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -197,7 +193,6 @@ std::vector<std::vector<std::vector<float>>> generateSDFFromMesh(
 
 int main()
 {
-    // Initialize GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -225,15 +220,15 @@ int main()
         return -1;
     }
     
-    // Configure OpenGL
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Load shaders
+    
     std::cout << "Loading shaders..." << std::endl;
     Shader marchShader("shaders/vertex.vs", "shaders/simple_fragment.fs");
     std::cout << "Shaders loaded successfully" << std::endl;
     
-    // Load the Stanford bunny model
     std::cout << "Loading Stanford bunny model..." << std::endl;
     Model bunnyModel("models/stanford-bunny/source/bunny.obj");
     std::cout << "Model loaded with " << bunnyModel.meshes.size() << " mesh(es)" << std::endl;
@@ -254,7 +249,6 @@ int main()
         return -1;
     }
     
-    // Run CPU marching cubes
     std::cout << "Running CPU marching cubes..." << std::endl;
     CubeMarching mc;
     mc.generateMesh(sdfGrid, 0.0f);  // Use isolevel 0.0 for signed distance
@@ -262,7 +256,6 @@ int main()
     std::cout << "Generated mesh: " << mc.getVertices().size() << " vertices, " 
               << (mc.getIndices().size() / 3) << " triangles" << std::endl;
     
-    // Create mesh for rendering
     Mesh marchingCubesMesh;
     const auto& vertices = mc.getVertices();
     const auto& indices = mc.getIndices();
@@ -275,21 +268,16 @@ int main()
     
     std::cout << "Mesh ready for rendering. Starting render loop..." << std::endl;
     
-    // Render loop
     while (!glfwWindowShouldClose(window)) {
-        // Per-frame time logic
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
         
-        // Input
         processInput(window);
         
-        // Render
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        // Set up matrices
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         
@@ -324,19 +312,16 @@ int main()
         // Render
         marchingCubesMesh.Draw(marchShader);
         
-        // Swap buffers and poll events
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     
-    // Cleanup
     std::cout << "Cleaning up..." << std::endl;
     glfwTerminate();
     std::cout << "Test completed successfully!" << std::endl;
     return 0;
 }
 
-// Input callback functions
 void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)

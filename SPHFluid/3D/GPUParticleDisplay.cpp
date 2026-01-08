@@ -47,14 +47,11 @@ void GPUParticleDisplay::InitializeRenderingResources() {
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GPUParticle, velocity));
     glVertexAttribDivisor(3, 1);
 
-    // Unbind to avoid accidental state leaks. The VAO stores the attribute bindings.
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void GPUParticleDisplay::CreateGradientTexture() {
-    // Create a 1D texture for the color gradient
-    // Fixed gradient resolution for the 1D colour lookup texture.
     constexpr int gradientSize = 256;
     std::vector<unsigned char> gradientData(gradientSize * 3);
     for (int i = 0; i < gradientSize; ++i) {
@@ -102,23 +99,10 @@ void GPUParticleDisplay::CreateGradientTexture() {
     glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 }
 
-void GPUParticleDisplay::Update() {
-    UpdateInstanceData();
-}
-
-void GPUParticleDisplay::UpdateInstanceData() {
-    // No CPU-side readback required. Instance attributes read directly from
-    // the GPU particle buffer bound to the VAO. This function remains as a
-    // placeholder in case future CPU-side work is needed.
-}
-
 void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projection) {
-    Update(); // No-op now; retained for compatibility
-
     particleShader->use();
 
-    // Scale the base sphere mesh to be proportional to the smoothing radius
-    float particleRadius = 0.07f; // Adjust as needed for visual size
+    float particleRadius = 0.07f;
     glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(particleRadius));
     particleShader->setMat4("model", model);
     particleShader->setMat4("view", view);
@@ -133,13 +117,12 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     particleShader->setInt("ColourMap", 0);
     particleShader->setFloat("velocityMax", 15.0f);
 
-        // Use the Mesh drawing interface (instanced draw via raw GL call)
-        if (particleRenderMesh) {
-            glBindVertexArray(particleRenderMesh->getVAO());
-            GLsizei indexCount = static_cast<GLsizei>(particleRenderMesh->getIndexCount());
-            if (indexCount > 0) {
-                glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, static_cast<GLsizei>(simulation->GetNumParticles()));
-            }
-            glBindVertexArray(0);
+    if (particleRenderMesh) {
+        glBindVertexArray(particleRenderMesh->getVAO());
+        GLsizei indexCount = static_cast<GLsizei>(particleRenderMesh->getIndexCount());
+        if (indexCount > 0) {
+            glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, static_cast<GLsizei>(simulation->GetNumParticles()));
         }
+        glBindVertexArray(0);
+    }
 }

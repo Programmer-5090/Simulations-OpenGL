@@ -48,25 +48,20 @@ private:
     int numParticles;
     GPUSimulationSettings settings;
 
-    // Compute shader program
     GLuint fluidComputeProgram;
 
-    // GPU buffers
     GLuint particleBuffer;
     GLuint spatialLookupBuffer;
     GLuint startIndicesBuffer;
 
-    // GPU sorting
     GPUSort gpuSort;
 
-    // Precomputed constants for 3D kernels
     float poly6Factor;
     float spikyPow2Factor;
     float spikyPow3Factor;
     float spikyPow2DerivativeFactor;
     float spikyPow3DerivativeFactor;
 
-    // Kernel constants
     enum KernelType {
         ExternalForcesKernel = 0,
         UpdateSpatialHashKernel = 1,

@@ -177,12 +177,6 @@ void main()
     // Get base color for this cubie face
     vec3 baseColor = getCubieColor(LocalPos, LocalNormal);
 
-    // Debug shortcut: render the base color directly (no lighting) to inspect textures/mapping
-    if (debugDisplayMode == 1)
-    {
-        FragColor = vec4(baseColor, 1.0);
-        return;
-    }
 
     vec3 result = vec3(0.0);
     for (int i = 0; i < dirLightCount && i < MAX_DIR_LIGHTS; ++i)

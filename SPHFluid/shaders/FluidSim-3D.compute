@@ -6,7 +6,6 @@ const int CalculateDensitiesKernel = 2;
 const int CalculatePressureForcesKernel = 3;
 const int CalculateViscosityKernel = 4;
 const int UpdatePositionsKernel = 5;
-const int WriteDensityTextureKernel = 6;
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -59,8 +58,6 @@ uniform float spikyPow2Factor;
 uniform float spikyPow3Factor;
 uniform float spikyPow2DerivativeFactor;
 uniform float spikyPow3DerivativeFactor;
-
-const uint3 densityMapSize = uint3(64, 64, 64);
 
 uniform int currentKernel;
 const ivec3 offsets3D[27] = ivec3[](
@@ -209,17 +206,6 @@ void HandleCollisions(inout Particle particle) {
     }
 }
 
-void WriteDensityToTexture() {
-    uvec3 texSize = uvec3(64, 64, 64);
-    for (uint i = 0; i < numParticles; i++) {
-        vec3 pos = particles[i].predictedPosition + (boundsSize * 0.5);
-        ivec3 texCoord = ivec3(clamp(floor(pos / boundsSize * vec3(texSize)), vec3(0), vec3(texSize - 1)));
-        
-        // Thread-safe accumulation
-        imageAtomicAdd(densityTexture, texCoord, particles[i].density);
-    }
-}
-
 void main() {
     uint index = gl_GlobalInvocationID.x;
     if (index >= numParticles) return;
@@ -333,10 +319,5 @@ void main() {
         }
         particles[index].position = newPosition;
         HandleCollisions(particles[index]);
-    }
-    else if (currentKernel == WriteDensityKernel) {
-        if (index == 0) {
-            WriteDensityToTexture();
-        }
     }
 }

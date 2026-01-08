@@ -40,24 +40,18 @@ public:
     GPUMarchCubes();
     ~GPUMarchCubes();
 
-    // Initialize buffers and shader program
     void initialize();
     
-    // Upload scalar field data to GPU
     void uploadScalarField(const std::vector<float>& scalarField);
     
-    // Execute marching cubes on GPU
     void execute();
     
-    // Settings
     void setSettings(const CMarchSettings& settings);
     CMarchSettings getSettings() const;
     
-    // Retrieve generated mesh data from GPU
     std::vector<float> getVertices();
     std::vector<unsigned int> getIndices();
     
-    // Get counts
     int getVertexCount() const { return numGeneratedVertices; }
     int getIndexCount() const { return numGeneratedIndices; }
     int getTriangleCount() const { return numGeneratedIndices / 3; }

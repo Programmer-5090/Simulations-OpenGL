@@ -7,7 +7,23 @@
 #endif
 
 GPUParticleDisplay::GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader)
-    : simulation(sim), particleShader(shader), VAO(0), VBO(0), instanceVBO(0), gradientTexture(0) {
+    : simulation(sim), particleShader(shader), VAO(0), VBO(0), instanceVBO(0), gradientTexture(0), 
+      particleMesh(nullptr), particleRenderMesh(nullptr) {
+    
+    GenerateCircleMesh();
+    
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, circleVertices.size() * sizeof(glm::vec2), circleVertices.data(), GL_STATIC_DRAW);
+    
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+    
+    glBindVertexArray(0);
+    
     InitializeRenderingResources();
 }
 
@@ -19,32 +35,25 @@ GPUParticleDisplay::~GPUParticleDisplay() {
 }
 
 void GPUParticleDisplay::InitializeRenderingResources() {
-    GenerateCircleMesh();
     CreateGradientTexture();
-
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &instanceVBO);
-
+    
+    GLuint simBuffer = simulation->GetParticleBuffer();
+    
     glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, simBuffer);
 
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, circleVertices.size() * sizeof(glm::vec2), circleVertices.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
-    glEnableVertexAttribArray(0);
+    GLsizei stride = static_cast<GLsizei>(sizeof(GPUParticle));
 
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-    glBufferData(GL_ARRAY_BUFFER, simulation->GetNumParticles() * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
-
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
     glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GPUParticle, position));
     glVertexAttribDivisor(1, 1);
 
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)sizeof(glm::vec2));
     glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GPUParticle, velocity));
     glVertexAttribDivisor(2, 1);
 
     glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void GPUParticleDisplay::GenerateCircleMesh() {
@@ -56,8 +65,6 @@ void GPUParticleDisplay::GenerateCircleMesh() {
 }
 
 void GPUParticleDisplay::CreateGradientTexture() {
-    // Create a 1D texture for the color gradient
-    // Fixed gradient resolution for the 1D colour lookup texture.
     constexpr int gradientSize = 256;
     std::vector<unsigned char> gradientData(gradientSize * 3);
     for (int i = 0; i < gradientSize; ++i) {
@@ -105,22 +112,6 @@ void GPUParticleDisplay::CreateGradientTexture() {
     glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 }
 
-void GPUParticleDisplay::Update() {
-    UpdateInstanceData();
-}
-
-void GPUParticleDisplay::UpdateInstanceData() {
-    auto particles = simulation->GetParticles();
-
-    // We only need to upload position and velocity.
-    std::vector<glm::vec4> instanceData(particles.size());
-    for (size_t i = 0; i < particles.size(); i++) {
-        instanceData[i] = glm::vec4(particles[i].position, particles[i].velocity);
-    }
-
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, instanceData.size() * sizeof(glm::vec4), instanceData.data());
-}
 
 void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projection) {
     particleShader->use();
@@ -133,14 +124,13 @@ void GPUParticleDisplay::Render(const glm::mat4& view, const glm::mat4& projecti
     glBindTexture(GL_TEXTURE_1D, gradientTexture);
     particleShader->setInt("ColourMap", 0);
 
-    // Set uniforms - make particle scale proportional to smoothing radius
-    float particleScale = simulation->GetSettings().smoothingRadius * 0.15f; // 15% of smoothing radius for 2D visual appeal
-    float velocityMax = 8.0f;    // 'velocityDisplayMax'
+    float particleScale = simulation->GetSettings().smoothingRadius * 0.15f;
+    float velocityMax = 8.0f;
     particleShader->setFloat("particleScale", particleScale);
     particleShader->setFloat("velocityMax", velocityMax);
     
     glBindVertexArray(VAO);
-    // Draw a quad for each particle
+    // Draw instanced quads (4 vertices per quad)
     glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, 4, simulation->GetNumParticles());
     glBindVertexArray(0);
 }

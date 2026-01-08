@@ -22,18 +22,16 @@ static GPUFluidSimulation* g_fluidSim = nullptr;
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
-// Point the camera toward the origin for a better initial view of the simulation bounds
 static Camera camera(
     glm::vec3(-7.0f, 7.0f, 10.0f),          // position
     glm::vec3(0.0f, 1.0f, 0.0f),            // up
-    -55.0f,                                 // yaw (toward origin from current position)
-    -30.0f                                  // pitch (slightly looking down)
+    -55.0f,                                 // yaw
+    -30.0f                                  // pitch
 );
 static float lastX = SCR_WIDTH / 2.0f;
 static float lastY = SCR_HEIGHT / 2.0f;
 static bool firstMouse = true;
 
-// Timing (static to avoid conflicts with other files)
 static float deltaTime = 0.0f;
 static float lastFrame = 0.0f;
 static bool paused = false;
@@ -65,6 +63,8 @@ int main() {
     }
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     Shader particleShader("SPHFluid/shaders/particle3d.vs", "SPHFluid/shaders/particle3d.fs");
     Shader boxShader("SPHFluid/shaders/box.vs", "SPHFluid/shaders/box.fs");
@@ -129,84 +129,46 @@ int main() {
 
         if (!paused) {
             fluidSim.Update(deltaTime);
-            
-            // Debug: Check if particles are staying in bounds
-            static int frameCounter = 0;
-            frameCounter++;
-            if (frameCounter % 60 == 0) { // Check every 60 frames
-                auto particles = fluidSim.GetParticles();
-                int escapedCount = 0;
-                glm::vec3 halfBounds = settings.boundsSize * 0.5f;
-                
-                for (const auto& particle : particles) {
-                    if (abs(particle.position.x) > halfBounds.x || 
-                        abs(particle.position.y) > halfBounds.y || 
-                        abs(particle.position.z) > halfBounds.z) {
-                        escapedCount++;
-                    }
-                }
-                
-                if (escapedCount > 0) {
-                    std::cout << "WARNING: " << escapedCount << " particles outside bounds!" << std::endl;
-                }
-            }
         }
-        particleDisplay.Update();
 
-    // Use same white background as the 2D window
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
-    // Render infinite grid FIRST (so particles render on top)
-    infiniteGridShader.use();
-    glm::mat4 viewProjection = projection * view;
-    infiniteGridShader.setMat4("gVP", viewProjection);
-    infiniteGridShader.setVec3("gCameraWorldPos", camera.Position);
-    infiniteGridShader.setFloat("gGridSize", 100.0f);
-    infiniteGridShader.setFloat("gGridMinPixelsBetweenCells", 2.0f);
-    infiniteGridShader.setFloat("gGridCellSize", 0.025f);
-    infiniteGridShader.setVec4("gGridColorThin", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
-    infiniteGridShader.setVec4("gGridColorThick", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    infiniteGridShader.setFloat("gGridAlpha", 0.5f);
+        // Render infinite grid
+        infiniteGridShader.use();
+        glm::mat4 viewProjection = projection * view;
+        infiniteGridShader.setMat4("gVP", viewProjection);
+        infiniteGridShader.setVec3("gCameraWorldPos", camera.Position);
+        infiniteGridShader.setFloat("gGridSize", 100.0f);
+        infiniteGridShader.setFloat("gGridMinPixelsBetweenCells", 2.0f);
+        infiniteGridShader.setFloat("gGridCellSize", 0.025f);
+        infiniteGridShader.setVec4("gGridColorThin", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        infiniteGridShader.setVec4("gGridColorThick", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        infiniteGridShader.setFloat("gGridAlpha", 0.5f);
+        glDepthMask(GL_FALSE);
+        glBindVertexArray(gridVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDepthMask(GL_TRUE);
 
-    glDepthMask(GL_FALSE);
-    glBindVertexArray(gridVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glDepthMask(GL_TRUE);
+        // Render Bounding Box
+        boxShader.use();
+        boxShader.setMat4("projection", projection);
+        boxShader.setMat4("view", view);
+        glm::mat4 boxModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, worldYOffset, 0.0f));
+        boxShader.setMat4("model", boxModel);
+        boxShader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+        boundingBox.Render(view, projection);
 
-    // Render Bounding Box
-    boxShader.use();
-    boxShader.setMat4("projection", projection);
-    boxShader.setMat4("view", view);
-    glm::mat4 boxModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, worldYOffset, 0.0f));
-    boxShader.setMat4("model", boxModel);
-    boxShader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow color for the box
-    boundingBox.Render(view, projection);
-
-        // // Render Particles
-        // particleShader.use();
-        // particleShader.setMat4("projection", projection);
-        // particleShader.setMat4("view", view);
-        // particleShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
-        // particleShader.setVec3("viewPos", camera.Position);
-        // particleDisplay.Render(view, projection);
-
-        // After particle rendering or instead of it:
-        static Shader meshShader("SPHFluid/shaders/fluidMesh3d.vs", "SPHFluid/shaders/fluidMesh3d.fs");
-        meshShader.use();
-        meshShader.setMat4("projection", projection);
-        meshShader.setMat4("view", view);
-        glm::mat4 meshModel = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, worldYOffset, 0.0f));
-        meshShader.setMat4("model", meshModel);
-        meshShader.setVec3("fluidColor", glm::vec3(0.2f, 0.5f, 0.9f));
-        meshShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
-        meshShader.setVec3("viewPos", camera.Position);
-
-        glEnable(GL_CULL_FACE);
-        glDisable(GL_CULL_FACE);
+        // Render Particles
+        particleShader.use();
+        particleShader.setMat4("projection", projection);
+        particleShader.setMat4("view", view);
+        particleShader.setVec3("lightPos", glm::vec3(10.0, 20.0, 10.0));
+        particleShader.setVec3("viewPos", camera.Position);
+        particleDisplay.Render(view, projection);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

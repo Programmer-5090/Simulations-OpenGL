@@ -1,8 +1,8 @@
-#include <glad/glad/glad.h>
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/glm/glm.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
-#include <glm/glm/gtc/type_ptr.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "GPUMarchCubes.h"
 #include "../model.h"
@@ -14,11 +14,9 @@
 #include <cmath>
 #include <chrono>
 
-// Window settings
 const unsigned int SCR_WIDTH = 1200;
 const unsigned int SCR_HEIGHT = 900;
 
-// Camera
 Camera camera(glm::vec3(0.0f, 0.5f, 2.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -28,15 +26,12 @@ int MAX_DEPTH = 10;
 bool showBVH = true;
 bool showModel = true;
 
-// Key state tracking for debouncing
 bool bKeyPressed = false;
 bool mKeyPressed = false;
 
-// Timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-// Callbacks
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -75,7 +70,7 @@ struct BoundingBox {
     }
 
     void setupRender() {
-        if (VAO != 0) return; // Already setup
+        if (VAO != 0) return;
         
         glm::vec3 size = max - min;
         float halfWidth = size.x / 2.0f;
@@ -135,7 +130,7 @@ struct Node {
     Node* childA;
     Node* childB;
     bool isLeaf;
-    
+
     ~Node() {
         delete childA;
         delete childB;
@@ -281,7 +276,6 @@ private:
                 case 5: color = glm::vec3(0.0f, 1.0f, 1.0f); break; // Cyan - Level 5
             }
             
-            // Set model matrix to center the box at its center
             glm::mat4 boxModel = glm::translate(glm::mat4(1.0f), node->bbox.center);
             shader.setMat4("model", boxModel);
             shader.setVec3("color", color);
@@ -468,7 +462,6 @@ std::vector<float> generateSDFFromMesh(
 
 int main()
 {
-    // Initialize GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -496,12 +489,10 @@ int main()
         return -1;
     }
     
-    // Configure OpenGL
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Load shaders
     std::cout << "Loading shaders..." << std::endl;
     Shader marchShader("shaders/vertex.vs", "shaders/simple_fragment.fs");
     Shader boxShader("shaders/box.vs", "shaders/box.fs");
@@ -538,7 +529,6 @@ int main()
     int gridSizeY = 80;
     int gridSizeZ = 80;
     
-    // Generate SDF from bunny model first to get bounds
     std::cout << "Generating signed distance field from bunny model using BVH acceleration..." << std::endl;
     glm::vec3 boundsMin, boundsMax;
     
@@ -555,7 +545,6 @@ int main()
         return -1;
     }
     
-    // Initialize GPU Marching Cubes with bounds
     std::cout << "Initializing GPU Marching Cubes..." << std::endl;
     GPUMarchCubes marchCubes;
     
@@ -563,7 +552,7 @@ int main()
     settings.gridSizeX = gridSizeX;
     settings.gridSizeY = gridSizeY;
     settings.gridSizeZ = gridSizeZ;
-    settings.isoLevel = 0.0f;  // Extract surface at zero-crossing of signed distance field
+    settings.isoLevel = 0.0f;
     settings.boundsMin = boundsMin;
     settings.boundsMax = boundsMax;
     
@@ -575,11 +564,9 @@ int main()
     std::cout << "Uploading SDF to GPU..." << std::endl;
     marchCubes.uploadScalarField(sdfGrid);
     
-    // Execute marching cubes
     std::cout << "Executing GPU marching cubes..." << std::endl;
     marchCubes.execute();
     
-    // Retrieve generated mesh
     std::cout << "Retrieving generated mesh..." << std::endl;
     std::vector<float> vertices = marchCubes.getVertices();
     std::vector<unsigned int> indices = marchCubes.getIndices();
@@ -595,7 +582,6 @@ int main()
                   << ") norm(" << vertices[idx+3] << "," << vertices[idx+4] << "," << vertices[idx+5] << ")" << std::endl;
     }
     
-    // Create VAO and VBO for the marched mesh
     GLuint marchVAO, marchVBO, marchEBO;
     glGenVertexArrays(1, &marchVAO);
     glGenBuffers(1, &marchVBO);
@@ -629,22 +615,17 @@ int main()
     
     std::cout << "Mesh VAO created successfully" << std::endl;
     
-    // Render loop
     std::cout << "Starting render loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
-        // Per-frame time logic
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
         
-        // Input
         processInput(window);
         
-        // Render
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Set up matrices
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
@@ -684,14 +665,11 @@ int main()
             boxShader.setMat4("view", view);
             bvh->renderBVH(boxShader, MAX_DEPTH);
         }
-        
-        
-        // Swap buffers and poll events
+                
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     
-    // Cleanup
     std::cout << "Cleaning up..." << std::endl;
     glDeleteBuffers(1, &marchVBO);
     glDeleteBuffers(1, &marchEBO);
@@ -702,7 +680,6 @@ int main()
     return 0;
 }
 
-// Input callback functions
 void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)

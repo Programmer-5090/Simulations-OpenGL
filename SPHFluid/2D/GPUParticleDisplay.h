@@ -6,23 +6,24 @@
 #include <vector>
 #include "Shader.h"
 #include "GPUFluidSimulation.h"
+#include "geometry/circle.h"
+#include "mesh.h"
 
 class GPUParticleDisplay {
 public:
     GPUParticleDisplay(GPUFluidSimulation* sim, Shader* shader);
     ~GPUParticleDisplay();
-
-    void Update();
     void Render(const glm::mat4& view, const glm::mat4& projection);
 
 private:
     void InitializeRenderingResources();
     void GenerateCircleMesh();
     void CreateGradientTexture();
-    void UpdateInstanceData();
 
     GPUFluidSimulation* simulation;
     Shader* particleShader;
+    Circle* particleMesh;
+    Mesh* particleRenderMesh;
 
     GLuint VAO;
     GLuint VBO;

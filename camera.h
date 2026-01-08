@@ -116,6 +116,10 @@ public:
             Zoom = 45.0f;
     }
 
+    void setPosition(glm::vec3 pos){
+        Position = pos;
+    }
+
 private:
     // calculates the front vector from the Camera's (updated) Euler Angles
     void updateCameraVectors()

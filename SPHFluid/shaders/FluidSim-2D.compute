@@ -155,7 +155,6 @@ vec2 CalculateExternalForces(vec2 position, vec2 velocity) {
     return gravityAccel;
 }
 
-// Unified neighbor processing for all kernels
 void ProcessNeighbors(uint particleIndex, int kernelType, inout vec2 pressureForce, inout vec2 viscosityForce, inout float density, inout float nearDensity, bool includeSelf) {
     ivec2 originCell = GetCell(particles[particleIndex].predictedPosition);
     float sqrRadius = smoothingRadius * smoothingRadius;
@@ -233,13 +232,11 @@ vec2 CalculateBoundaryForce(vec2 position) {
     vec2 halfBounds = boundsSize * 0.5;
     vec2 force = vec2(0.0);
     
-    // Check distance to each of the four walls
     float distX_L = position.x - (-halfBounds.x);
     float distX_R = (halfBounds.x) - position.x;
     float distY_B = position.y - (-halfBounds.y);
     float distY_T = (halfBounds.y) - position.y;
 
-    // Apply force if within the boundary distance
     if (distX_L < boundaryForceDistance) {
         force.x += (1.0 - distX_L / boundaryForceDistance) * boundaryForceMultiplier;
     }
@@ -262,14 +259,12 @@ void main() {
     if (index >= numParticles) return;
     
     if (currentKernel == ExternalForcesKernel) {
-        // External forces and prediction
         vec2 externalForce = CalculateExternalForces(particles[index].position, particles[index].velocity);
         particles[index].velocity += externalForce * deltaTime;
         const float predictionFactor = 1.0 / 120.0;
         particles[index].predictedPosition = particles[index].position + particles[index].velocity * predictionFactor;
     }
     else if (currentKernel == UpdateSpatialHashKernel) {
-        // Update spatial hash
         startIndices[index] = numParticles;
         ivec2 cell = GetCell(particles[index].predictedPosition);
         uint hash = HashCell(cell);
@@ -279,7 +274,6 @@ void main() {
         spatialLookup[index].cellKey = cellKey;
     }
     else if (currentKernel == CalculateDensitiesKernel) {
-        // Densities (self included)
         particles[index].density = 0.0;
         particles[index].nearDensity = 0.0;
         vec2 dummyPressure = vec2(0.0);
@@ -289,7 +283,6 @@ void main() {
         particles[index].nearPressure = particles[index].nearDensity * nearPressureMultiplier;
     }
     else if (currentKernel == CalculatePressureForcesKernel) {
-        // Pressure forces
         vec2 pressureForce = vec2(0.0);
         vec2 dummyViscosity = vec2(0.0);
         float dummyDensity = 0.0;
@@ -300,7 +293,6 @@ void main() {
         particles[index].velocity += acceleration * deltaTime;
     }
     else if (currentKernel == CalculateViscosityKernel) {
-        // Viscosity
         vec2 viscosityForce = vec2(0.0);
         vec2 dummyPressure = vec2(0.0);
         float dummyDensity = 0.0;
@@ -309,9 +301,7 @@ void main() {
         particles[index].velocity += viscosityForce * viscosityStrength * deltaTime;
     }
     else if (currentKernel == UpdatePositionsKernel) {
-        // Update positions
         vec2 newPosition = particles[index].position + particles[index].velocity * deltaTime;
-        // Validate position
         if (isnan(newPosition.x) || isnan(newPosition.y) || isinf(newPosition.x) || isinf(newPosition.y)) {
             newPosition = vec2(0.0, 0.0);
             particles[index].velocity = vec2(0.0, 0.0);
