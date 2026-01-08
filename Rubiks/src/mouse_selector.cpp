@@ -60,37 +60,18 @@ std::optional<ID> MouseSelector::getSelection() const {
 }
 
 void MouseSelector::handleSelection(const Input& input, const std::pair<int, int>& screenSize) {
-    // Detect left-button rising edge (click) and ignore if middle button is held (camera drag)
     auto buttons = input.getMouseButtons();
     bool leftPressed = false;
     bool middlePressed = false;
     if (auto it = buttons.find("left"); it != buttons.end()) leftPressed = it->second;
     if (auto it2 = buttons.find("middle"); it2 != buttons.end()) middlePressed = it2->second;
 
+    // Only process selection on left-button rising edge, ignore during camera drag
     if (leftPressed && !mousePressedLastFrame && !middlePressed) {
         auto mousePos = input.getMousePos();
+        
         glm::vec3 rayDir = calculateRayDirection(screenSize, mousePos);
         glm::vec3 rayOrigin = camera->Position;
-
-        // Debug: print click state and mouse info
-        {
-            int sx = static_cast<int>(screenSize.first);
-            int sy = static_cast<int>(screenSize.second);
-            try {
-                std::cout << "[MouseSelector] Click detected. left=" << leftPressed
-                          << " middle=" << middlePressed
-                          << " mousePos=(" << mousePos.first << "," << mousePos.second << ")"
-                          << " screenSize=(" << sx << "," << sy << ")"
-                          << " selectables=" << selectables.size() << std::endl;
-            } catch (...) {
-                // ignore logging errors in release builds
-            }
-        }
-        // Debug: print ray origin/direction
-        try {
-            std::cout << "[MouseSelector] rayOrigin=(" << rayOrigin.x << "," << rayOrigin.y << "," << rayOrigin.z << ")"
-                      << " rayDir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ")" << std::endl;
-        } catch (...) {}
 
         std::optional<std::pair<ID, float>> closest;
 
@@ -103,77 +84,101 @@ void MouseSelector::handleSelection(const Input& input, const std::pair<int, int
             }
 
             if (!result) continue;
-            // Debug: log each hit candidate
-            try {
-                std::cout << "[MouseSelector] hit candidate id=" << result->first
-                          << " dist=" << result->second << std::endl;
-            } catch (...) {}
-            if (!closest || result->second < closest->second) closest = result;
+            
+            if (!closest || result->second < closest->second) {
+                closest = result;
+            }
         }
 
-        if (closest) selectedId = closest->first;
-        else selectedId.reset();
+        if (closest) {
+            selectedId = closest->first;
+        } else {
+            selectedId.reset();
+        }
     }
 
     mousePressedLastFrame = leftPressed;
 }
 
+
 glm::vec3 MouseSelector::calculateRayDirection(const std::pair<int, int>& screenSize,
                                                const std::pair<int, int>& mousePos) const {
-    float x = (2.0f * mousePos.first) / screenSize.first - 1.0f;
-    float y = 1.0f - (2.0f * mousePos.second) / screenSize.second;
-    glm::vec4 rayClip(x, y, -1.0f, 1.0f);
+    // Convert screen coordinates to NDC [-1, 1]
+    float ndcX = (2.0f * mousePos.first) / screenSize.first - 1.0f;
+    float ndcY = 1.0f - (2.0f * mousePos.second) / screenSize.second;  // Y inverted
+    
+    // Create clip-space ray (at near plane, pointing into screen)
+    glm::vec4 rayClip(ndcX, ndcY, -1.0f, 1.0f);
 
-    // The standard unproject: clip -> eye (inverse projection) -> world (inverse view)
-    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom),
-                                            static_cast<float>(screenSize.first) / static_cast<float>(screenSize.second),
-                                            nearPlane,
-                                            farPlane);
+    // Build projection and view matrices
+    glm::mat4 projection = glm::perspective(
+        glm::radians(camera->Zoom),
+        static_cast<float>(screenSize.first) / static_cast<float>(screenSize.second),
+        nearPlane,
+        farPlane);
     glm::mat4 view = camera->GetViewMatrix();
 
-    // From clip space to eye space
+    // Unproject from clip space to eye space
     glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-    // forward in eye space points down -Z, so set z = -1 and w = 0 to represent a direction
-    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);  // Direction, not point
 
-    // From eye space to world space
+    // Transform from eye space to world space
     glm::vec4 worldRay4 = glm::inverse(view) * rayEye;
     glm::vec3 worldRay = glm::normalize(glm::vec3(worldRay4));
+    
     return worldRay;
 }
+
 
 std::pair<bool, float> MouseSelector::rayIntersectsTriangle(const glm::vec3& rayOrigin,
                                                             const glm::vec3& rayDir,
                                                             const glm::vec3& v0,
                                                             const glm::vec3& v1,
                                                             const glm::vec3& v2) const {
+    // Compute edge vectors from v0
     glm::vec3 edge1 = v1 - v0;
     glm::vec3 edge2 = v2 - v0;
+    
+    // Begin calculating determinant (also used to calculate u parameter)
     glm::vec3 h = glm::cross(rayDir, edge2);
-    float a = glm::dot(edge1, h);
-    if (std::abs(a) < kEpsilon) {
+    float det = glm::dot(edge1, h);
+    
+    // If determinant is near zero, ray lies in plane of triangle
+    if (std::abs(det) < kEpsilon) {
         return {false, 0.0f};
     }
 
-    float f = 1.0f / a;
+    float invDet = 1.0f / det;
+    
+    // Calculate distance from v0 to ray origin
     glm::vec3 s = rayOrigin - v0;
-    float u = f * glm::dot(s, h);
+    
+    // Calculate u parameter and test bounds
+    float u = invDet * glm::dot(s, h);
     if (u < 0.0f || u > 1.0f) {
         return {false, 0.0f};
     }
 
+    // Prepare to test v parameter
     glm::vec3 q = glm::cross(s, edge1);
-    float v = f * glm::dot(rayDir, q);
+    
+    // Calculate v parameter and test bounds
+    float v = invDet * glm::dot(rayDir, q);
     if (v < 0.0f || u + v > 1.0f) {
         return {false, 0.0f};
     }
 
-    float t = f * glm::dot(edge2, q);
+    // Calculate t (distance along ray to intersection)
+    float t = invDet * glm::dot(edge2, q);
+    
+    // Ray intersection (t must be positive - in front of camera)
     if (t > kEpsilon) {
         return {true, t};
     }
+    
     return {false, 0.0f};
 }
+
 
 std::optional<std::pair<ID, float>> MouseSelector::testModel(const glm::vec3& rayOrigin,
                                                              const glm::vec3& rayDir,
@@ -193,6 +198,7 @@ std::optional<std::pair<ID, float>> MouseSelector::testModel(const glm::vec3& ra
     return closest;
 }
 
+
 std::optional<std::pair<ID, float>> MouseSelector::testMesh(const glm::vec3& rayOrigin,
                                                             const glm::vec3& rayDir,
                                                             const Selectable& selectable) const {
@@ -204,15 +210,19 @@ std::optional<std::pair<ID, float>> MouseSelector::testMesh(const glm::vec3& ray
     float closestDistance = std::numeric_limits<float>::max();
     bool hit = false;
 
+    // Iterate through triangles (3 indices per triangle)
     for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        // Get vertex data
         Vertex v0 = mesh.vertices[mesh.indices[i]];
         Vertex v1 = mesh.vertices[mesh.indices[i + 1]];
         Vertex v2 = mesh.vertices[mesh.indices[i + 2]];
 
+        // Transform vertices to world space
         glm::vec3 p0 = glm::vec3(selectable.transform * glm::vec4(v0.Position, 1.0f));
         glm::vec3 p1 = glm::vec3(selectable.transform * glm::vec4(v1.Position, 1.0f));
         glm::vec3 p2 = glm::vec3(selectable.transform * glm::vec4(v2.Position, 1.0f));
 
+        // Test intersection
         auto [intersects, distance] = rayIntersectsTriangle(rayOrigin, rayDir, p0, p1, p2);
         if (intersects && distance < closestDistance) {
             closestDistance = distance;
