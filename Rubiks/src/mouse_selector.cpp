@@ -1,17 +1,3 @@
-/**
- * @file mouse_selector.cpp
- * @brief Implements camera-based raycasting for 3D object selection.
- *
- * This module provides functionality to shoot rays from the camera through
- * screen coordinates and test for intersections with 3D objects. The process:
- *
- * 1. Convert 2D screen coordinates to normalized device coordinates (NDC)
- * 2. Unproject the NDC point through inverse projection/view matrices
- * 3. Compute the ray direction in world space
- * 4. Test ray against all registered selectable objects using triangle intersection
- * 5. Return the closest hit object
- */
-
 #include "mouse_selector.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -73,18 +59,6 @@ std::optional<ID> MouseSelector::getSelection() const {
     return selectedId;
 }
 
-/**
- * @brief Processes mouse input to perform object selection via raycasting.
- *
- * On a left mouse button click (rising edge), this method:
- * 1. Retrieves the current mouse position in screen coordinates
- * 2. Computes a ray from the camera position through the mouse location
- * 3. Tests the ray against all registered selectable objects
- * 4. Selects the closest intersected object (if any)
- *
- * @param input The input handler containing mouse state
- * @param screenSize The current screen dimensions (width, height)
- */
 void MouseSelector::handleSelection(const Input& input, const std::pair<int, int>& screenSize) {
     auto buttons = input.getMouseButtons();
     bool leftPressed = false;
@@ -96,17 +70,9 @@ void MouseSelector::handleSelection(const Input& input, const std::pair<int, int
     if (leftPressed && !mousePressedLastFrame && !middlePressed) {
         auto mousePos = input.getMousePos();
         
-        // Step 1: Compute ray from camera through screen point
         glm::vec3 rayDir = calculateRayDirection(screenSize, mousePos);
         glm::vec3 rayOrigin = camera->Position;
 
-#ifdef DEBUG_SELECTION
-        std::cout << "[MouseSelector] Click at (" << mousePos.first << "," << mousePos.second << ")"
-                  << " rayOrigin=(" << rayOrigin.x << "," << rayOrigin.y << "," << rayOrigin.z << ")"
-                  << " rayDir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ")" << std::endl;
-#endif
-
-        // Step 2: Test ray against all selectable objects
         std::optional<std::pair<ID, float>> closest;
 
         for (const auto& selectable : selectables) {
@@ -119,13 +85,11 @@ void MouseSelector::handleSelection(const Input& input, const std::pair<int, int
 
             if (!result) continue;
             
-            // Step 3: Track closest intersection
             if (!closest || result->second < closest->second) {
                 closest = result;
             }
         }
 
-        // Step 4: Update selection state
         if (closest) {
             selectedId = closest->first;
         } else {
@@ -136,37 +100,17 @@ void MouseSelector::handleSelection(const Input& input, const std::pair<int, int
     mousePressedLastFrame = leftPressed;
 }
 
-/**
- * @brief Computes a ray direction from screen coordinates through the camera.
- *
- * This is the core of screen-to-world raycasting:
- *
- * 1. Convert screen coordinates to Normalized Device Coordinates (NDC):
- *    - X: [-1, 1] from left to right
- *    - Y: [-1, 1] from bottom to top (Y is inverted from screen coords)
- *
- * 2. Create a clip-space point at the near plane (z = -1)
- *
- * 3. Unproject to eye space using inverse projection matrix
- *
- * 4. Transform to world space using inverse view matrix
- *
- * 5. Normalize to get a unit direction vector
- *
- * @param screenSize Current viewport dimensions (width, height)
- * @param mousePos Mouse position in screen coordinates (origin at top-left)
- * @return Normalized ray direction in world space
- */
+
 glm::vec3 MouseSelector::calculateRayDirection(const std::pair<int, int>& screenSize,
                                                const std::pair<int, int>& mousePos) const {
-    // Step 1: Convert screen coordinates to NDC [-1, 1]
+    // Convert screen coordinates to NDC [-1, 1]
     float ndcX = (2.0f * mousePos.first) / screenSize.first - 1.0f;
     float ndcY = 1.0f - (2.0f * mousePos.second) / screenSize.second;  // Y inverted
     
-    // Step 2: Create clip-space ray (at near plane, pointing into screen)
+    // Create clip-space ray (at near plane, pointing into screen)
     glm::vec4 rayClip(ndcX, ndcY, -1.0f, 1.0f);
 
-    // Step 3: Build projection and view matrices
+    // Build projection and view matrices
     glm::mat4 projection = glm::perspective(
         glm::radians(camera->Zoom),
         static_cast<float>(screenSize.first) / static_cast<float>(screenSize.second),
@@ -174,34 +118,18 @@ glm::vec3 MouseSelector::calculateRayDirection(const std::pair<int, int>& screen
         farPlane);
     glm::mat4 view = camera->GetViewMatrix();
 
-    // Step 4: Unproject from clip space to eye space
+    // Unproject from clip space to eye space
     glm::vec4 rayEye = glm::inverse(projection) * rayClip;
     rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);  // Direction, not point
 
-    // Step 5: Transform from eye space to world space
+    // Transform from eye space to world space
     glm::vec4 worldRay4 = glm::inverse(view) * rayEye;
     glm::vec3 worldRay = glm::normalize(glm::vec3(worldRay4));
     
     return worldRay;
 }
 
-/**
- * @brief Tests ray intersection with a triangle using the Möller–Trumbore algorithm.
- *
- * This algorithm efficiently computes ray-triangle intersection without
- * explicitly computing the plane equation. It uses barycentric coordinates
- * to determine if the intersection point lies within the triangle.
- *
- * Mathematical basis:
- * - A point P on a ray: P = O + t*D (origin O, direction D, parameter t)
- * - A point in triangle: P = (1-u-v)*V0 + u*V1 + v*V2
- * - Solve for t, u, v using Cramer's rule
- *
- * @param rayOrigin Ray origin point (camera position)
- * @param rayDir Normalized ray direction
- * @param v0, v1, v2 Triangle vertices in world space
- * @return Pair of (hit success, distance along ray if hit)
- */
+
 std::pair<bool, float> MouseSelector::rayIntersectsTriangle(const glm::vec3& rayOrigin,
                                                             const glm::vec3& rayDir,
                                                             const glm::vec3& v0,
@@ -251,16 +179,7 @@ std::pair<bool, float> MouseSelector::rayIntersectsTriangle(const glm::vec3& ray
     return {false, 0.0f};
 }
 
-/**
- * @brief Tests ray intersection with all meshes in a Model.
- *
- * Iterates through each mesh in the model and finds the closest intersection.
- *
- * @param rayOrigin Ray origin (camera position)
- * @param rayDir Normalized ray direction
- * @param selectable The selectable containing the model to test
- * @return Optional pair of (ID, distance) if hit, nullopt otherwise
- */
+
 std::optional<std::pair<ID, float>> MouseSelector::testModel(const glm::vec3& rayOrigin,
                                                              const glm::vec3& rayDir,
                                                              const Selectable& selectable) const {
@@ -279,19 +198,7 @@ std::optional<std::pair<ID, float>> MouseSelector::testModel(const glm::vec3& ra
     return closest;
 }
 
-/**
- * @brief Tests ray intersection with all triangles in a Mesh.
- *
- * For each triangle in the mesh:
- * 1. Transform vertices to world space using the selectable's transform matrix
- * 2. Test ray-triangle intersection
- * 3. Track the closest intersection point
- *
- * @param rayOrigin Ray origin (camera position)
- * @param rayDir Normalized ray direction
- * @param selectable The selectable containing the mesh to test
- * @return Optional pair of (ID, distance) if hit, nullopt otherwise
- */
+
 std::optional<std::pair<ID, float>> MouseSelector::testMesh(const glm::vec3& rayOrigin,
                                                             const glm::vec3& rayDir,
                                                             const Selectable& selectable) const {
