@@ -48,8 +48,3 @@ scratch.txt
 # libraries
 lib/
 includes/
-
-# Object files
-*.o
-*.obj
-*.blend
