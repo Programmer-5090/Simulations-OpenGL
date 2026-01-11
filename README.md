@@ -1,8 +1,8 @@
 <div align="center">
 
-# OpenGL Physics Simulations
+# OpenGL Simulations
 
-A Repository of Real-time physics Simulations: GPU fluid simulation (2D/3D), Collision Detection, and Procedural Geometry.
+A Repository of Real-time Simulations: GPU fluid simulation (2D/3D), Collision Detection, Rubiks Cube Solver, Cube Marching and Procedural Geometry.
 
 </div>
 
@@ -13,94 +13,54 @@ A Repository of Real-time physics Simulations: GPU fluid simulation (2D/3D), Col
 - Prerequisites
 - Build (Windows)
 - Run the programs
-   - From VS Code tasks
-   - From PowerShell (optional)
 - Controls
 - Project structure
 - Performance notes
 - Troubleshooting
 - License
 
+
 ## Overview
 
-This suite projects that  implement multiple simulation systems with modern OpenGL (core profile) and compute shaders for GPU-accelerated physics. It includes SPH-based fluid simulation (2D/3D), a particle collision system, and a small set of procedural geometry tools.
+This suite projects that  implement multiple simulation systems with modern OpenGL (core profile) and compute shaders for GPU-accelerated algorithms and physics. It includes SPH-based fluid simulation (2D/3D), a determimnistic multithreaded particle collision system, a rubiks cube solver visualization, cube marching visualization and a small set of procedural geometry tools.
 
 ## Features
 
 - GPU Fluid Simulation (2D/3D) using SPH + spatial hashing
-- Particle Collision System with uniform grid partitioning
+- Deterministic Particle Collision System with uniform grid partitioning and multithreading
+- Rubiks Cube solver using Thistlethwaite's Algorithm
+- Marching Cube and Signed Distance Function algorithms
 - Procedural geometry: parametric surfaces, polygons, spheres, and helpers
 - Modern OpenGL 3.3+ rendering, OpenGL 4.3+ compute shaders
 - GLM math, GLFW windowing/input, GLAD loader, optional Assimp model loading
 
 ## Prerequisites
 
-- Windows 10/11, GPU with OpenGL 4.3+ recommended for compute shaders
-- CMake 3.15+
-- Visual Studio 2019/2022 (C++17)
-- You must manually download and place third‑party dependencies; they are not shipped in this repo:
-   - GLFW 3.4 — headers and compiled library (find_package + link)
-   - Assimp — headers and compiled library + DLL (used by OpenGLProject)
-   - GLAD, GLM, stb_image — headers and GLAD source file
+- Windows 10/11 with a GPU that supports OpenGL 3.3 (4.3+ recommended for compute shaders).
+- CMake 3.15 or newer (3.27+ recommended).
+- Visual Studio 2019/2022 with the Desktop development with C++ workload (or the MSVC Build Tools + Ninja).
+- PowerShell 7+ or Windows Terminal for running the build commands.
+- Git (optional, but recommended for pulling updates).
+- Internet access on the first configure so CMake can download third-party libraries.
 
-Expected header locations under this repo (manual copy):
-- `includes/glad/` (must contain `include/glad/glad.h` and `src/glad.c` per this CMake)
-- `includes/glm/` (GLM headers)
-- `includes/stb_image.h`
-- `includes/assimp/include/` (Assimp headers)
-- Optionally `includes/GLFW/` if you want local GLFW headers; the library itself is located via `lib/glfw3`.
 
-## Dependency setup (required)
+## Dependency management (automatic)
 
-Choose ONE of the following setups before configuring/building.
-
-### Option A — Local vendor layout (no package manager)
-
-Place compiled libraries and configs into this repo so CMake can find them via `CMAKE_PREFIX_PATH` and explicit link dirs:
-
-Place headers under `includes/` and compiled libraries under `lib/` as follows.
-
-- GLFW 3.4 (required for all programs)
-   - Build from source with CMake (Visual Studio 2022 x64, Debug/Release)
-   - Install to: `<repo>/lib/glfw3`
-      - Must contain `lib/glfw3/lib/glfw3.lib` and `lib/glfw3/lib/cmake/glfw3/GLFW3Config.cmake`
-   - Headers: either install system‑wide or copy to `includes/GLFW/`
-
-- Assimp (required for OpenGLProject executable)
-   - Build from source with CMake (Visual Studio 2022 x64)
-   - Install to: `<repo>/lib/assimp`
-      - Expected libs: `lib/assimp/lib/assimp-vc143-mt.lib`, `lib/assimp/lib/zlibstatic.lib`
-      - Expected DLL: `lib/assimp/bin/assimp-vc143-mt.dll` (copied to runtime dir post‑build for OpenGLProject)
-   - Headers: copy to `includes/assimp/include/`
-
-- GLAD, GLM, stb_image (headers only + GLAD source)
-   - GLAD: copy to `includes/glad/` and ensure `includes/glad/src/glad.c` exists (the CMake compiles it)
-   - GLM: copy to `includes/glm/`
-   - stb_image: place `includes/stb_image.h`
-
-Notes:
-- `CMakeLists.txt` sets `CMAKE_PREFIX_PATH` to `lib/glfw3` and `lib/assimp` so `find_package(glfw3)` works and Assimp libs are located.
-- If your filenames differ (toolset/version), adjust `CMakeLists.txt` or rename the binaries to match.
-
-### Option B — vcpkg (recommended if you prefer a package manager)
-
-1) Install vcpkg and integrate with VS/VS Code
-2) Install packages:
-    - `vcpkg install glfw3:x64-windows`
-    - `vcpkg install assimp:x64-windows`
-3) Configure with vcpkg toolchain (manual configure example):
-
-```powershell
-cmake -B build -S . -G "Visual Studio 17 2022" -A x64 `
-   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
-   -DVCPKG_TARGET_TRIPLET=x64-windows
-```
-
-You can then build with the existing VS Code tasks or via Visual Studio.
+1. Clone the repository: `git clone https://github.com/Programmer-5090/Simulations-OpenGL.git`
+2. Configure the project: `cmake -B build -S . -G "Visual Studio 17 2022" -A x64`
+3. During the first configure CMake will fetch/build:
+   - GLFW 3.4
+   - GLAD (OpenGL loader)
+   - GLM 1.0
+   - Assimp 5.3 (compiled statically)
+   - SFML audio/system modules (for Rubik’s Cube + audio tests)
+   - `stb_image.h`
+4. Dependencies are cached inside `build/_deps`. Subsequent configures reuse the downloads; delete `build/_deps` if you ever want to force a refresh.
+5. If you must build offline, run the configure step once while online and archive `build/_deps` for reuse.
 
 ## Program details and configs
 
-All paths are relative to the repo root (tasks set the working directory accordingly).
+All paths are relative to the repo root.
 
 1) GPUFluidSim 2D
 - OpenGL context: 4.3 Core (compute shaders)
@@ -120,74 +80,82 @@ All paths are relative to the repo root (tasks set the working directory accordi
 - OpenGL context: 3.3 Core
 - Window title: 1280 x 800 (Resizable)
 - Auto‑spawning streams from the left edge; performance‑aware throttling
-- Shaders: `shaders/vertex.vs`, `shaders/simple_fragment.fs`
 
-1) OpenGLProject (main demo)
+4) RubiksCube + solver tests
+- `RubiksCube` is the interactive viewer/solver.
+- `RubiksStateTest` and `RubiksSolverTest` are headless executables that validate cube IDs and solver heuristics.
+
+5) MarchingTest (CPU/GPU marching cubes)
+- Visualizes marching cubes tables on the CPU for quick experimentation.
+- Targets: `MarchingTest`, `testGPU`, `testCPUBunny` (each with its own executable in `output/<Name>/<Config>/`).
+
+6) debugBVH
+- Standalone viewer for the BVH structures generated by the marching cubes experiments.
+- Useful when tuning subdivision or debugging occupancy issues.
+
+7) OpenGLProject
 - OpenGL context: 3.3 Core
 - Demonstrates geometry and basic rendering with an infinite grid
 - Shaders: `shaders/vertex.vs`, `shaders/simple_fragment.fs`, `shaders/infinite_grid.*`, optional normal debug `shaders/normal_debug.*`
 
+8) AudioTest
+- Minimal SFML audio harness that plays the bundled `audio/beep.wav` to confirm your audio device/driver setup.
+
 ## Build (Windows)
 
-Use the provided VS Code tasks (Terminal → Run Task…):
+Everything is driven by plain CMake commands, so any terminal (VS Developer Prompt, PowerShell, etc.) works the same way. Dependencies download automatically into `build/_deps` during the first configure step.
 
-1) CMake Configure (Windows) — generates the solution into `build/`
-2) CMake Build (Windows) — builds all targets in Debug
-3) CMake Build Release (Windows) — builds in Release (optional)
+1) Configure the project (generator/arch optional):
+```
+cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+```
+2) Build all targets in Debug:
+```
+cmake --build build --config Debug
+```
+3) Build Release (recommended for demos):
+```
+cmake --build build --config Release
+```
+4) Build a specific target/variant (example for `debugBVH` Release):
+```
+cmake --build build --config Release --target debugBVH
+```
 
-Executables now land under `output/<TargetName>/<Config>/` (for example `output/OpenGLProject/Debug/OpenGLProject.exe`), so each folder is self-contained and ready to share.
-
-Tip: A Visual Studio solution is generated at `build/OpenGLProject.sln` if you prefer opening it directly in VS.
+Executables land under `output/<TargetName>/<Config>/` (for example `output/OpenGLProject/Debug/OpenGLProject.exe`), so each folder is self-contained. A Visual Studio solution is still generated at `build/OpenGLProject.sln` if you prefer opening it directly in VS.
 
 ## Run the programs
 
-### From VS Code tasks
+After a build, each executable lives in `output/<Target>/<Config>/`. Launch them straight from PowerShell or CMD; swap `Release` for `Debug` as needed.
 
-- Run GPUFluidSim 2D (Debug) → launches `GPUFluidSim2D.exe`
-- Run GPUFluidSim 3D (Debug) → launches `GPUFluidSim3D.exe`
-- Run Collision System 2D (Debug) → launches `CollisionSystem.exe`
-- Run OpenGL Project (Debug) → launches `OpenGLProject.exe`
+Primary demos:
+- GPUFluidSim 2D: `.\output\GPUFluidSim2D\Release\GPUFluidSim2D.exe`
+- GPUFluidSim 3D: `.\output\GPUFluidSim3D\Release\GPUFluidSim3D.exe`
+- Collision System: `.\output\CollisionSystem\Release\CollisionSystem.exe`
+- OpenGL Project: `.\output\OpenGLProject\Release\OpenGLProject.exe`
+- Rubik's Solver: `.\output\OpenGLProject\Release\RubiksCube.exe`
 
-Release variants are available for the main demo and collision system:
+Additional demos/tests:
+- Marching cubes: `.\output\MarchingTest\<Config>\MarchingTest.exe`, `testGPU.exe`, `testCPUBunny.exe`
+- debugBVH viewer: `.\output\debugBVH\<Config>\debugBVH.exe`
+- Rubik's Test suite: `RubiksStateTest.exe`, `RubiksSolverTest.exe`
+- Audio Test: `.\output\AudioTest\<Config>\AudioTest.exe`
 
-- Run OpenGL Project (Release)
-- Run Collision System (Release)
-
-Optional maintenance and alt build:
-
-- Clean Build — removes build artifacts
-- MinGW Build (Alternative) — experimental GCC build for quick checks
+For quick one-offs you can also build and run a single target via CMake:
+```
+cmake --build build --config Release --target GPUFluidSim3D
+.\output\GPUFluidSim3D\Release\GPUFluidSim3D.exe
+```
 
 ## Shareable bundles
 
 Each executable now has an isolated runtime folder under `output/<Target>/<Config>/` that contains the binary, required DLLs, and only the assets it truly needs (for example, `RubiksCube` ships just its two shader pairs plus the single cube texture and solver tables). Zip that directory to share a standalone build of that specific program.
 
-Note on shader paths: executables load shaders relative to the repo root (e.g., `SPHFluid/shaders/...`). Make sure your current directory is the project root (the VS Code tasks already do this).
-
-### From PowerShell (optional)
-
-Run these locally, after a successful build. One command per line.
-
-```powershell
-# Navigate to the repo root (path contains spaces, so keep the quotes)
-cd "c:\Users\dimai\Documents\Programming\Programming\Gravi Sim\OpenGL-C"
-
-# Debug configuration binaries
-.\output\Debug\GPUFluidSim2D.exe
-.\output\Debug\GPUFluidSim3D.exe
-.\output\Debug\CollisionSystem.exe
-.\output\Debug\OpenGLProject.exe
-
-# Release configuration binaries (after building Release)
-.\output\Release\GPUFluidSim2D.exe
-.\output\Release\GPUFluidSim3D.exe
-.\output\Release\CollisionSystem.exe
-.\output\Release\OpenGLProject.exe
-```
+Note on shader paths: executables load shaders relative to the repo root (e.g., `SPHFluid/shaders/...`). Make sure your current directory is the project root before launching a binary.
 
 ## Controls
 
-GPU Fluid Simulation (2D):
+**GPU Fluid Simulation (2D)**
 - Mouse move: interact with the fluid
 - Left mouse: attract particles
 - Right mouse: repel particles
@@ -195,37 +163,60 @@ GPU Fluid Simulation (2D):
 - R: reset simulation
 - ESC: exit
 
-GPU Fluid Simulation (3D):
-- WASD: move camera
+**GPU Fluid Simulation (3D)**
+- Mouse look and scroll wheel: orbit/zoom the camera
+- WASD: move horizontally
 - Shift: move down
 - C: move up
-- Mouse: look around (cursor disabled)
 - Space: pause/resume
 - R: reset simulation
 - ESC: exit
 
-Collision System (2D):
-- Auto‑spawning particle streams from the left
-- Right‑click or C: clear particles
+**Collision System (2D)**
+- Auto‑spawning particle streams from the left edge
+- C: clear all particles
+- Space: move on to phase 3
+- K: switch images
 - ESC: exit
 
-## Verify your setup
+**RubiksCube viewer (interactive solver)**
+- Left mouse: select a cubie via raycast; hold middle mouse to orbit, mouse wheel to zoom
+- Arrow keys: rotate the face that contains the current selection (mapped to camera orientation)
+- Number keys 1‑6: trigger a single U, D, R, L, F, or B quarter turn while idle
+- P: scramble ~50 random moves · O: launch the solver queue · G: toggle debug face colors · T: toggle textured stickers
+- ESC: exit (RubiksStateTest and RubiksSolverTest are headless and print to the console only)
 
-Before configuring/building, confirm these paths exist (examples):
+**MarchingTest (stepwise CPU marching cubes)**
+- Mouse look + scroll: move the camera; WASD to translate, C to move up, Left Shift to move down
+- N or Right Arrow: process exactly one grid cell
+- Space: toggle automatic stepping · G: generate the full mesh once · C: clear mesh/reset stepping
+- H: toggle normal visualization · B: toggle chunk bounding box · F: toggle wireframe rendering
+- ESC: exit
 
-- Headers
-   - `includes/glad/include/glad/glad.h`
-   - `includes/glad/src/glad.c`
-   - `includes/glm/glm.hpp` (GLM folder structure)
-   - `includes/stb_image.h`
-   - `includes/assimp/include/assimp/Importer.hpp`
-   - Optional: `includes/GLFW/glfw3.h`
-- Libraries
-   - `lib/glfw3/lib/cmake/glfw3/GLFW3Config.cmake`
-   - `lib/glfw3/lib/glfw3.lib`
-   - `lib/assimp/lib/assimp-vc143-mt.lib`
-   - `lib/assimp/lib/zlibstatic.lib`
-   - `lib/assimp/bin/assimp-vc143-mt.dll` (required at runtime for OpenGLProject)
+**testGPU (GPU Marching Cubes)**
+- Mouse look + scroll for camera control; WASD, C (up), Left Shift (down) translate the camera
+- B: toggle BVH bounding boxes · M: toggle the marched mesh visibility
+- ESC: exit
+
+**testCPUBunny (CPU Marching Cubes)**
+- Mouse look + scroll, WASD movement, C up, Left Shift down
+- ESC: exit
+
+**debugBVH**
+- Mouse look + scroll, WASD movement, C up, Left Shift down
+- B: toggle BVH boxes · M: toggle bunny mesh visibility
+- Up/Down arrows: change which BVH depth level is rendered
+- Left/Right arrows: change maximum BVH construction depth (rebuilds the tree)
+- ESC: exit
+
+**OpenGLProject demo**
+- Mouse look + scroll to control the free camera
+- WASD: move horizontally · C: move up · Left Shift: move down
+- ESC: exit
+
+**AudioTest**
+- Console‑only harness that plays several beep variations automatically; close the console or hit Ctrl+C to stop early
+
 
 ## Project structure
 
@@ -234,12 +225,12 @@ Before configuring/building, confirm these paths exist (examples):
 │   ├── 2D/
 │   ├── 3D/
 │   └── shaders/
-├── Collision System/     # Particle collision detection demo
+├── Collision System/     # Particle collision detection
+├── Rubiks/               # Rubiks cube solver and tests
+├── Marching Cubes        # Marching cube algorithm on CPU and GPU
 ├── geometry/             # Procedural geometry and helpers
 ├── shaders/              # Vertex/fragment shaders
-├── models/               # Assets for the main demo
-├── includes/             # Third‑party headers (GLFW, GLAD, GLM, stb, Assimp)
-├── lib/                  # Prebuilt libraries (GLFW, Assimp, etc.)
+├── models/               # Assets for demos
 ├── build/                # CMake build tree (generated)
 └── output/               # Built executables (Debug/Release)
 ```
@@ -247,7 +238,9 @@ Before configuring/building, confirm these paths exist (examples):
 ## Performance notes
 
 - 2D particles: 10k - 15k+ depending on GPU and Window size at 144fps
-- 3D particles: 50k - 60k+ at 60fps
+- 3D particles: 50k - 60k+ at 50 - 60fps
+- Collsion System: 15k+ particles at 60fps
+- Rubiks Cube Solver: 45 moves or less to solve
 - Memory: ~100–200 MB for common presets
 - Dedicated GPU strongly recommended for 3D + compute
 
@@ -268,24 +261,59 @@ Missing DLLs:
 - Visual C++ Redistributable may be required for some systems
 
 
-## Images
+## Gallery
 
+### GPU Fluid Simulation 2D
 
-<img src="img/readme/GPUFluidSim2D_X0MrvDz7Yd.png" alt="2D Particle fluid sim" width="600" />
-<img src="img/readme/GPUFluidSim3D_hQh4Q2IFyl.png" alt="3D Particle fluid sim" width="600" />
-<img src="img/readme/CollisionSystem_xIL3KAtf2o.png" alt="Collision system" width="600" />
+| | | |
+|---|---|---|
+| <img src="img/readme/GPUFluidSim2D_h4FisaN8Wb.png" alt="2D Sim 1" width="280" /> | <img src="img/readme/GPUFluidSim2D_rBr4L7aGut.png" alt="2D Sim 2" width="280" /> | <img src="img/readme/GPUFluidSim2D_uevKoNY8op.png" alt="2D Sim 3" width="280" /> |
+
+### GPU Fluid Simulation 3D
+
+| | |
+|---|---|
+| <img src="img/readme/GPUFluidSim3D_hHvqIt8tno.png" alt="3D Sim 1" width="420" /> | <img src="img/readme/GPUFluidSim3D_kUxgaNHCBu.png" alt="3D Sim 2" width="420" /> |
+
+### Collision System
+
+| | | |
+|---|---|---|
+| <img src="img/readme/CollisionSystem_mFtuAc71ud.png" alt="Collision 1" width="280" /> | <img src="img/readme/CollisionSystem_vwo07H2SDy.png" alt="Collision 2" width="280" /> | <img src="img/readme/CollisionSystem_Bwlf2urddK.png" alt="Collision 3" width="280" /> |
+
+### Marching Cubes & BVH Debugging
+
+| | |
+|---|---|
+| <img src="img/readme/testGPU_WrD7aNtHTw.png" alt="GPU Marching" width="420" /> | <img src="img/readme/debugBVH_C1M8uG7bnT.png" alt="BVH Viewer" width="420" /> |
+
+### Rubik's Cube Solver
+
+| | |
+|---|---|
+| <img src="img/readme/RubiksCube_2Us7LxYdS1.png" alt="Rubik's 1" width="420" /> | <img src="img/readme/RubiksCube_Pkh1v8HOm9.png" alt="Rubik's 2" width="420" /> |
 
 
 # Sources
 
 
 <a href="https://www.youtube.com/watch?v=rSKMYc1CQHE&t=1155s" target="_blank" rel="noopener noreferrer">
-   <img src="https://i.ytimg.com/vi/rSKMYc1CQHE/maxresdefault.jpg" srcset="https://i.ytimg.com/vi/rSKMYc1CQHE/maxresdefault.jpg 2x, https://i.ytimg.com/vi/rSKMYc1CQHE/hqdefault.jpg 1x" alt="Sebastian Lague: Simulating Fluids" width="600" style="max-width:100%;height:auto;" />
+   <img src="https://i.ytimg.com/vi/rSKMYc1CQHE/maxresdefault.jpg" alt="Sebastian Lague: Simulating Fluids" width="600" style="max-width:100%;height:auto;" />
 </a>
 
 <a href="https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf" target="_blank" rel="noopener noreferrer">SPH Techniques for the Physics Based Simulation of Fluids and Solids</a>
 
 <a href="https://sph-tutorial.physics-simulation.org/slides/01_intro_foundations_neighborhood.pdf" target="_blank" rel="noopener noreferrer">Foundations of SPH</a>
+
+<a href="https://www.youtube.com/watch?v=9IULfQH7E90&t=572s&pp=ygUUY29sbGlzaW9uIHNpbXVsYXRpb24%3D" target="_blank" rel="noopener noreferrer">
+   <img src="https://i.ytimg.com/vi/9IULfQH7E90/hqdefault.jpg" alt="Sebastian Lague: Simulating Fluids" width="600" style="max-width:100%;height:auto;" />
+</a>
+
+<a href="https://github.com/nihaljn/marching-cubes/tree/main*/" target="_blank" rel="noopener noreferrer">Nihaljn Marching Cubes</a>
+
+<a href="https://en.wikipedia.org/wiki/Signed_distance_function" target="_blank" rel="noopener noreferrer">Signed Distance Function</a>
+
+<a href="https://www.jaapsch.net/puzzles/compcube.htm#thisal" target="_blank" rel="noopener noreferrer">Jaapsch Rubik's Solver Blog</a>
 
 
 # License

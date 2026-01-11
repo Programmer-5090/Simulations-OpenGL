@@ -25,7 +25,6 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 float autoSpawnTimer = 0.0f;
 bool spawnEnabled = true;
 
-// Timing
 const float fixedDeltaTime = 1.0f / 120.0f;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -45,8 +44,10 @@ MapPixel mapPixel;
 size_t mapPixelIndex = 0;
 const std::string IMAGE_PATH1 = "img/textures/teto.png";
 const std::string IMAGE_PATH2 = "img/textures/doge.png";
+const std::string IMAGE_PATH3 = "img/textures/nyan cat.png";
 static bool useFirstImage = true;
 bool debugPaused = false;
+bool awaitingPhase3Input = false;
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
@@ -56,12 +57,13 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
         currentState = SpawnState::INITIAL_GENERATION;
         spawnEnabled = true;
         autoSpawnTimer = 0.0f;
+        debugPaused = false;
+        awaitingPhase3Input = false;
         std::cout << "Particles cleared - restarting color mapping" << std::endl;
     }
 }
 
 int main() {
-    // GLFW initialization
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
@@ -82,7 +84,6 @@ int main() {
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
 
-    // GLAD initialization
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         glfwTerminate();
@@ -92,7 +93,6 @@ int main() {
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
-    // OpenGL setup
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -121,6 +121,8 @@ int main() {
 
     std::cout << "Physics engine ready! Generating initial particle layout for color mapping..." << std::endl;
     std::cout << "Right-click or press C to clear and restart." << std::endl;
+    std::cout << "Press P to toggle auto-spawning once the simulation is running." << std::endl;
+    std::cout << "Press K to switch images" << std::endl;
 
     std::cout << "Entering main loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
@@ -132,7 +134,12 @@ int main() {
         lastFrame = currentFrame;
 
         if (deltaTime > 0.0167f) deltaTime = 0.0167f;
-        accumulator += deltaTime;
+
+        if (!debugPaused) {
+            accumulator += deltaTime;
+        } else {
+            accumulator = 0.0f;
+        }
 
         // State machine for particle generation and color mapping
         switch (currentState) {
@@ -149,6 +156,7 @@ int main() {
                                   << "). Mapping to image colors..." << std::endl;
                         // Stop any further spawning before mapping
                         spawnEnabled = false;
+                        awaitingPhase3Input = false;
                         currentState = SpawnState::MAPPING_COLORS;
                     }
                 }
@@ -157,6 +165,10 @@ int main() {
             case SpawnState::MAPPING_COLORS:
                 // Phase 2: Map current particle positions to image colors
                 {
+                    if (awaitingPhase3Input) {
+                        break;
+                    }
+
                     std::vector<Particle>& particles = solver.getParticles();
                     float worldWidth = WORLD_RIGHT - WORLD_LEFT;
                     float worldHeight = WORLD_TOP - WORLD_BOTTOM;
@@ -185,7 +197,7 @@ int main() {
                     try {
                         if (useFirstImage) {
                             std::cout << "Mapping particles to colors from image: " << IMAGE_PATH1 << std::endl;
-                            mapPixel.addParticles(particles, IMAGE_PATH1, worldWidth, worldHeight);
+                            mapPixel.addParticles(particles, IMAGE_PATH3, worldWidth, worldHeight);
                         } else {
                             std::cout << "Mapping particles to colors from image: " << IMAGE_PATH2 << std::endl;
                             mapPixel.addParticles(particles, IMAGE_PATH2, worldWidth, worldHeight);
@@ -204,12 +216,19 @@ int main() {
                         std::cout << "==================\n" << std::endl;
                         
                         debugPaused = true;
+                        awaitingPhase3Input = true;
+                        spawnEnabled = false;
+                        accumulator = 0.0f;
+                        autoSpawnTimer = 0.0f;
                         // Don't clear particles yet - stay in this state until user presses space
                     } catch (const std::exception& e) {
                         std::cerr << "Image mapping failed: " << e.what() << std::endl;
                         // Fall back to initial generation with default colors
                         currentState = SpawnState::INITIAL_GENERATION;
                         mapPixel.idToColor.clear();
+                        awaitingPhase3Input = false;
+                        debugPaused = false;
+                        spawnEnabled = true;
                     }
                 }
                 break;
@@ -252,10 +271,12 @@ int main() {
                                 glm::vec2 spawnPos(x, y);
 
                                 if (currentState == SpawnState::INITIAL_GENERATION) {
-                                    Particle p = solver.createParticle(spawnPos, CONSTANT_VELOCITY, 0.07f, fixedDeltaTime, true);
+                                    Particle p = solver.createParticle(spawnPos, CONSTANT_VELOCITY, 0.07f,
+                                                                       fixedDeltaTime, true);
                                     solver.addParticle(p);
                                 } else if (currentState == SpawnState::SPAWNING_COLORED) {
-                                    Particle p = solver.createParticle(spawnPos, CONSTANT_VELOCITY, 0.07f, fixedDeltaTime, false);
+                                    Particle p = solver.createParticle(spawnPos, CONSTANT_VELOCITY, 0.07f,
+                                                                       fixedDeltaTime, false);
                                     auto col = mapPixel.getColorById(p.id);
                                     p.color = glm::vec3(col[0], col[1], col[2]);
 
@@ -271,7 +292,6 @@ int main() {
                     solver.update(fixedDeltaTime);
                     accumulator -= fixedDeltaTime;
                     
-                    // FPS/UPS counter
                     static int updatesThisSecond = 0;
                     static float upsTimer = 0.0f;
                     
@@ -313,7 +333,6 @@ int main() {
             }
         }
 
-        // Rendering
         glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -356,7 +375,6 @@ int main() {
         glfwSwapBuffers(window);
     }
 
-    // Cleanup
     glDeleteTextures(1, &texture);
     glfwTerminate();
     return 0;
@@ -376,6 +394,7 @@ void processInput(GLFWwindow *window) {
             debugPaused = false;
             spawnEnabled = true;
             autoSpawnTimer = 0.0f;
+            awaitingPhase3Input = false;
             std::cout << "All particles cleared - restarting color mapping!" << std::endl;
             cKeyPressed = true;
         }
@@ -383,7 +402,17 @@ void processInput(GLFWwindow *window) {
         cKeyPressed = false;
     }
 
-    // Edge-triggered toggle for image switching to avoid rapid flipping while key is held
+    static bool pKeyPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+        if (!pKeyPressed && !debugPaused) {
+            spawnEnabled = !spawnEnabled;
+            std::cout << (spawnEnabled ? "Auto-spawning enabled" : "Auto-spawning paused") << std::endl;
+        }
+        pKeyPressed = true;
+    } else {
+        pKeyPressed = false;
+    }
+
     static bool kKeyPressed = false;
     if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS) {
         if (!kKeyPressed) {
@@ -398,20 +427,17 @@ void processInput(GLFWwindow *window) {
     static bool spacePressed = false;
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
         if (!spacePressed) {
-            // If in debug pause, continue to phase 3 with immediate spawning
             if (debugPaused) {
-                debugPaused = false;
-                std::cout << "\n=== PHASE 3: SPAWNING WITH MAPPED COLORS ===" << std::endl;
-                // Clear particles and prepare for colored spawn with immediate start
-                solver.clearParticles();
-                mapPixelIndex = 0;
-                spawnEnabled = true;
-                autoSpawnTimer = 0.0f;
-                currentState = SpawnState::SPAWNING_COLORED;
-            } else {
-                // Normal spawn toggle
-                spawnEnabled = !spawnEnabled;
-                std::cout << (spawnEnabled ? "Auto-spawning enabled" : "Auto-spawning paused") << std::endl;
+                if (awaitingPhase3Input) {
+                    debugPaused = false;
+                    awaitingPhase3Input = false;
+                    std::cout << "\n=== PHASE 3: SPAWNING WITH MAPPED COLORS ===" << std::endl;
+                    solver.clearParticles();
+                    mapPixelIndex = 0;
+                    spawnEnabled = true;
+                    autoSpawnTimer = 0.0f;
+                    currentState = SpawnState::SPAWNING_COLORED;
+                }
             }
             spacePressed = true;
         }

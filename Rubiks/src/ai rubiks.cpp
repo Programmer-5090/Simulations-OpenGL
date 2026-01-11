@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <queue>
+#include <unordered_set>
 
 namespace {
     // CubeState face order: Right, Left, Up, Down, Front, Back.

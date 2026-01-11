@@ -1,8 +1,8 @@
-#include <glad/glad/glad.h>
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/glm/glm.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
-#include <glm/glm/gtc/type_ptr.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "GPUMarchCubes.h"
 #include "../model.h"
