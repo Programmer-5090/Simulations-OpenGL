@@ -2,7 +2,7 @@
 #define GPUMARCHCUBES_H
 
 #include <glad/glad.h>
-#include <glm/glm/glm.hpp>
+#include <glm/glm.hpp>
 #include <vector>
 
 // Vertex structure matching the shader layout (std430)

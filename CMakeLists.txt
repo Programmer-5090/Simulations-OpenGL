@@ -3,20 +3,101 @@ project(OpenGLProject)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
 
-set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/lib/glfw3" "${CMAKE_SOURCE_DIR}/lib/assimp" ${CMAKE_PREFIX_PATH})
+include(FetchContent)
+
+set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH "Directory where third-party dependencies are downloaded" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Link third-party libraries statically" FORCE)
 
 find_package(OpenGL REQUIRED)
-find_package(glfw3 REQUIRED)
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/includes)
-include_directories(${CMAKE_SOURCE_DIR}/includes/glad)
-include_directories(${CMAKE_SOURCE_DIR}/includes/glm)
-include_directories(${CMAKE_SOURCE_DIR}/includes/assimp/include)
 include_directories(${CMAKE_SOURCE_DIR}/SPHFluid)
 include_directories(${CMAKE_SOURCE_DIR}/Collision System)
 include_directories(${CMAKE_SOURCE_DIR})
+
+# Third-party dependencies (downloaded on-demand into build/_deps)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.4
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(glfw)
+
+set(GLAD_PROFILE "core" CACHE STRING "" FORCE)
+set(GLAD_API "gl=4.6" CACHE STRING "" FORCE)
+set(GLAD_GENERATOR "c" CACHE STRING "" FORCE)
+set(GLAD_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    glad
+    GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+    GIT_TAG v0.1.36
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(glad)
+if(TARGET glad AND NOT TARGET glad::glad)
+    add_library(glad::glad ALIAS glad)
+endif()
+
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG 1.0.1
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(glm)
+if(TARGET glm AND NOT TARGET glm::glm)
+    add_library(glm::glm ALIAS glm)
+endif()
+
+set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG v5.3.1
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(assimp)
+
+set(SFML_BUILD_NETWORK OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_GRAPHICS OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_WINDOW OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_AUDIO ON CACHE BOOL "" FORCE)
+set(SFML_BUILD_SYSTEM ON CACHE BOOL "" FORCE)
+set(SFML_INSTALL_PKGCONFIG_FILES OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    sfml
+    GIT_REPOSITORY https://github.com/SFML/SFML.git
+    GIT_TAG 2.6.1
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(sfml)
+
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(stb)
+if(NOT stb_POPULATED)
+    FetchContent_Populate(stb)
+endif()
+add_library(stb INTERFACE)
+add_library(stb::stb ALIAS stb)
+target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
 
 function(configure_program_output target_name)
     set_target_properties(${target_name} PROPERTIES
@@ -80,13 +161,12 @@ file(GLOB WORLD_SOURCES "SPHFluid/2D/*.cpp")
 file(GLOB WORLD3D_SOURCES "SPHFluid/3D/*.cpp")
 file(GLOB COLLISION_SOURCES "Collision System/*.cpp")
 list(APPEND SOURCES "${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp")
-set(GLAD_SOURCES "${CMAKE_SOURCE_DIR}/includes/glad/src/glad.c")
 
-# Main executable
+list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/stb_image.cpp")
 list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/Collision System/window2d.cpp")
 list(REMOVE_ITEM SOURCES "${CMAKE_SOURCE_DIR}/gpuFluidWindow.cpp")
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${GEOMETRY_SOURCES} ${GLAD_SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES} ${GEOMETRY_SOURCES})
 configure_program_output(${PROJECT_NAME})
 bundle_program_resources(${PROJECT_NAME} ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
@@ -94,26 +174,22 @@ bundle_program_resources(${PROJECT_NAME} ${RES_SHADERS} ${RES_MODELS} ${RES_IMG}
 add_executable(CollisionSystem 
     "Collision System/window2d.cpp"
     "Collision System/Nsolver.cpp"
-    "Collision System/stb_image_impl.cpp"
     "Collision System/utils.cpp"
+    stb_image.cpp
     shader.cpp 
     mesh.cpp 
     ${GEOMETRY_SOURCES} 
-    ${GLAD_SOURCES}
 )
 configure_program_output(CollisionSystem)
 bundle_program_resources(CollisionSystem ${RES_SHADERS} ${RES_IMG})
 
 target_include_directories(CollisionSystem PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}/Collision System
     ${CMAKE_SOURCE_DIR}
 )
 
 find_package(Threads REQUIRED)
-target_link_libraries(CollisionSystem Threads::Threads)
 
 
 # GPU Fluid Simulation executables
@@ -126,7 +202,6 @@ add_executable(GPUFluidSim3D
     mesh.cpp 
     ${GEOMETRY_SOURCES} 
     ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp 
-    ${GLAD_SOURCES}
 )
 configure_program_output(GPUFluidSim3D)
 bundle_program_resources(GPUFluidSim3D ${RES_SHADERS})
@@ -139,16 +214,9 @@ add_executable(GPUFluidSim2D
     mesh.cpp
     ${GEOMETRY_SOURCES}
     ${CMAKE_SOURCE_DIR}/SPHFluid/GPUSort.cpp
-    ${GLAD_SOURCES}
 )
 configure_program_output(GPUFluidSim2D)
 bundle_program_resources(GPUFluidSim2D ${RES_SHADERS})
-
-# SFML setup
-set(SFML_DIR "${CMAKE_SOURCE_DIR}/includes/SFML/SFML-2.6.1")
-set(SFML_INCLUDE_DIR "${SFML_DIR}/include")
-set(SFML_LIB_DIR "${SFML_DIR}/lib")
-set(SFML_BIN_DIR "${CMAKE_SOURCE_DIR}/lib/SFML")
 
 # Marching Cubes test executable
 add_executable(MarchingTest
@@ -159,27 +227,13 @@ add_executable(MarchingTest
     model.cpp
     "audio/audio.cpp"
     ${GEOMETRY_SOURCES}
-    ${GLAD_SOURCES}
 )
 configure_program_output(MarchingTest)
 bundle_program_resources(MarchingTest ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 target_include_directories(MarchingTest PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}
-    ${SFML_INCLUDE_DIR}
-)
-
-target_link_directories(MarchingTest PRIVATE ${SFML_LIB_DIR})
-target_link_libraries(MarchingTest 
-    OpenGL::GL 
-    glfw
-    optimized sfml-audio
-    optimized sfml-system
-    debug sfml-audio-d  
-    debug sfml-system-d
 )
 
 if(WIN32 AND MSVC)
@@ -197,36 +251,19 @@ add_executable(testGPU
     mesh.cpp
     model.cpp
     ${GEOMETRY_SOURCES}
-    ${GLAD_SOURCES}
 )
 configure_program_output(testGPU)
 bundle_program_resources(testGPU ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 target_include_directories(testGPU PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}
-)
-
-target_link_directories(testGPU PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
-target_link_libraries(testGPU 
-    OpenGL::GL 
-    glfw
-    assimp-vc143-mt
-    zlibstatic
 )
 
 if(WIN32 AND MSVC)
     target_compile_definitions(testGPU PRIVATE 
         WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
     target_compile_options(testGPU PRIVATE /external:W0 /external:anglebrackets /external:templates-)
-    
-    add_custom_command(TARGET testGPU POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
-        "$<TARGET_FILE_DIR:testGPU>/assimp-vc143-mt.dll"
-    )
 endif()
 
 
@@ -238,36 +275,19 @@ add_executable(testCPUBunny
     mesh.cpp
     model.cpp
     ${GEOMETRY_SOURCES}
-    ${GLAD_SOURCES}
 )
 configure_program_output(testCPUBunny)
 bundle_program_resources(testCPUBunny ${RES_SHADERS} ${RES_MODELS} ${RES_IMG})
 
 target_include_directories(testCPUBunny PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}
-)
-
-target_link_directories(testCPUBunny PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
-target_link_libraries(testCPUBunny 
-    OpenGL::GL 
-    glfw
-    assimp-vc143-mt
-    zlibstatic
 )
 
 if(WIN32 AND MSVC)
     target_compile_definitions(testCPUBunny PRIVATE 
         WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
     target_compile_options(testCPUBunny PRIVATE /external:W0 /external:anglebrackets /external:templates-)
-    
-    add_custom_command(TARGET testCPUBunny POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
-        "$<TARGET_FILE_DIR:testCPUBunny>/assimp-vc143-mt.dll"
-    )
 endif()
 
 
@@ -278,24 +298,13 @@ add_executable(debugBVH
     mesh.cpp
     model.cpp
     ${GEOMETRY_SOURCES}
-    ${GLAD_SOURCES}
 )
 configure_program_output(debugBVH)
 bundle_program_resources(debugBVH ${RES_SHADERS} ${RES_MODELS})
 
 target_include_directories(debugBVH PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}
-)
-
-target_link_directories(debugBVH PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
-target_link_libraries(debugBVH 
-    OpenGL::GL 
-    glfw
-    assimp-vc143-mt
-    zlibstatic
 )
 
 if(WIN32 AND MSVC)
@@ -319,33 +328,14 @@ add_executable(RubiksCube
     mesh.cpp
     model.cpp
     ${GEOMETRY_SOURCES}
-    ${GLAD_SOURCES}
 )
 configure_program_output(RubiksCube)
 bundle_program_resources(RubiksCube ${RUBIKS_SHADER_FILES} "img/textures/Rubiks Col.png" ${RES_RUBIKS_ASSETS} ${RES_RUBIKS_AUDIO})
 
 target_include_directories(RubiksCube PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}/Rubiks/include
     ${CMAKE_SOURCE_DIR}
-    ${SFML_INCLUDE_DIR}
-)
-
-target_link_directories(RubiksCube PRIVATE 
-    ${CMAKE_SOURCE_DIR}/lib/assimp/lib
-    ${SFML_LIB_DIR}
-)
-target_link_libraries(RubiksCube 
-    OpenGL::GL 
-    glfw
-    assimp-vc143-mt
-    zlibstatic
-    optimized sfml-audio
-    optimized sfml-system
-    debug sfml-audio-d
-    debug sfml-system-d
 )
 
 if(WIN32 AND MSVC)
@@ -375,22 +365,7 @@ if(WIN32 AND MSVC)
     target_compile_options(GPUFluidSim2D PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-# Link libraries
-target_link_libraries(${PROJECT_NAME} OpenGL::GL glfw)
-target_link_libraries(CollisionSystem OpenGL::GL glfw)
-target_link_libraries(GPUFluidSim3D OpenGL::GL glfw)
-target_link_libraries(GPUFluidSim2D OpenGL::GL glfw)
-
-# Platform-specific library linking
-if(WIN32)
-    # Add Assimp lib directory and link libraries to targets that use Assimp
-    target_link_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
-    target_link_directories(MarchingTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/assimp/lib)
-    target_link_libraries(${PROJECT_NAME} assimp-vc143-mt zlibstatic)
-    target_link_libraries(MarchingTest assimp-vc143-mt zlibstatic)
-elseif(APPLE)
-    target_link_directories(${PROJECT_NAME} PRIVATE /opt/homebrew/lib ${CMAKE_SOURCE_DIR}/includes/assimp/lib)
-    target_link_libraries(${PROJECT_NAME} assimp)
+if(APPLE)
     target_link_libraries(${PROJECT_NAME} "-framework OpenGL" "-framework Cocoa" "-framework IOKit")
     target_link_libraries(CollisionSystem "-framework OpenGL" "-framework Cocoa" "-framework IOKit")
 endif()
@@ -403,30 +378,10 @@ add_executable(AudioTest
 configure_program_output(AudioTest)
 bundle_program_resources(AudioTest ${RES_AUDIO_BEEP})
 
-target_include_directories(AudioTest PRIVATE ${SFML_INCLUDE_DIR})
-target_link_directories(AudioTest PRIVATE ${SFML_LIB_DIR})
-target_link_libraries(AudioTest 
-    optimized sfml-audio
-    optimized sfml-system
-    debug sfml-audio-d  
-    debug sfml-system-d
-)
-
 if(WIN32 AND MSVC)
     target_compile_definitions(AudioTest PRIVATE 
         WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
     target_compile_options(AudioTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
-endif()
-
-
-# Optional SDL2 support
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(SDL2 QUIET sdl2)
-    if(SDL2_FOUND)
-        target_link_libraries(${PROJECT_NAME} ${SDL2_LIBRARIES})
-        target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
-    endif()
 endif()
 
 # Headless Rubik's ID comparison test
@@ -442,11 +397,8 @@ bundle_program_resources(RubiksStateTest ${RES_RUBIKS_ASSETS})
 
 target_include_directories(RubiksStateTest PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}/Rubiks/include
     ${CMAKE_SOURCE_DIR}
-    ${SFML_INCLUDE_DIR}
 )
 
 if(WIN32 AND MSVC)
@@ -455,15 +407,6 @@ if(WIN32 AND MSVC)
     target_compile_options(RubiksStateTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-target_link_directories(RubiksStateTest PRIVATE ${SFML_LIB_DIR})
-target_link_libraries(RubiksStateTest 
-    OpenGL::GL 
-    glfw
-    optimized sfml-audio
-    optimized sfml-system
-    debug sfml-audio-d
-    debug sfml-system-d
-)
 
 # Solver unit tests
 add_executable(RubiksSolverTest
@@ -477,11 +420,8 @@ bundle_program_resources(RubiksSolverTest ${RES_RUBIKS_ASSETS})
 
 target_include_directories(RubiksSolverTest PRIVATE
     ${CMAKE_SOURCE_DIR}/includes
-    ${CMAKE_SOURCE_DIR}/includes/glad
-    ${CMAKE_SOURCE_DIR}/includes/glm
     ${CMAKE_SOURCE_DIR}/Rubiks/include
     ${CMAKE_SOURCE_DIR}
-    ${SFML_INCLUDE_DIR}
 )
 
 if(WIN32 AND MSVC)
@@ -490,62 +430,61 @@ if(WIN32 AND MSVC)
     target_compile_options(RubiksSolverTest PRIVATE /external:W0 /external:anglebrackets /external:templates-)
 endif()
 
-target_link_directories(RubiksSolverTest PRIVATE ${SFML_LIB_DIR})
-target_link_libraries(RubiksSolverTest 
-    OpenGL::GL 
-    glfw
-    optimized sfml-audio
-    optimized sfml-system
-    debug sfml-audio-d
-    debug sfml-system-d
+# Shared dependency linkage
+set(COMMON_GL_LIBS OpenGL::GL glfw glad::glad glm::glm stb::stb)
+
+set(TARGETS_USING_GL
+    ${PROJECT_NAME}
+    CollisionSystem
+    GPUFluidSim3D
+    GPUFluidSim2D
+    MarchingTest
+    testGPU
+    testCPUBunny
+    debugBVH
+    RubiksCube
+    RubiksStateTest
+    RubiksSolverTest
 )
 
-# Copy required DLLs on Windows
-if(WIN32)
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>)
+foreach(target_name IN LISTS TARGETS_USING_GL)
+    if(TARGET ${target_name})
+        target_link_libraries(${target_name} PRIVATE ${COMMON_GL_LIBS})
+    endif()
+endforeach()
 
-    # Copy SFML DLLs for AudioTest
-    add_custom_command(TARGET AudioTest POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${SFML_BIN_DIR}/sfml-audio-2.dll"
-        "${SFML_BIN_DIR}/sfml-audio-d-2.dll"
-        "${SFML_BIN_DIR}/sfml-system-2.dll"
-        "${SFML_BIN_DIR}/sfml-system-d-2.dll"
-        "${SFML_BIN_DIR}/openal32.dll"
-        $<TARGET_FILE_DIR:AudioTest>)
+set(TARGETS_USING_ASSIMP
+    ${PROJECT_NAME}
+    MarchingTest
+    testGPU
+    testCPUBunny
+    debugBVH
+    RubiksCube
+    RubiksStateTest
+    RubiksSolverTest
+)
 
-    # Copy SFML DLLs for MarchingTest
-    add_custom_command(TARGET MarchingTest POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${SFML_BIN_DIR}/sfml-audio-2.dll"
-        "${SFML_BIN_DIR}/sfml-audio-d-2.dll"
-        "${SFML_BIN_DIR}/sfml-system-2.dll"
-        "${SFML_BIN_DIR}/sfml-system-d-2.dll"
-        "${SFML_BIN_DIR}/openal32.dll"
-        $<TARGET_FILE_DIR:MarchingTest>)
+foreach(target_name IN LISTS TARGETS_USING_ASSIMP)
+    if(TARGET ${target_name})
+        target_link_libraries(${target_name} PRIVATE assimp::assimp)
+    endif()
+endforeach()
 
-    # Copy SFML DLLs for RubiksCube
-    add_custom_command(TARGET RubiksCube POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${SFML_BIN_DIR}/sfml-audio-2.dll"
-        "${SFML_BIN_DIR}/sfml-audio-d-2.dll"
-        "${SFML_BIN_DIR}/sfml-system-2.dll"
-        "${SFML_BIN_DIR}/sfml-system-d-2.dll"
-        "${SFML_BIN_DIR}/openal32.dll"
-        $<TARGET_FILE_DIR:RubiksCube>)
+set(SFML_ENABLED_TARGETS
+    MarchingTest
+    RubiksCube
+    AudioTest
+    RubiksStateTest
+    RubiksSolverTest
+)
 
-    # Copy Assimp DLL for debugBVH
-    add_custom_command(TARGET debugBVH POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
-        $<TARGET_FILE_DIR:debugBVH>)
+foreach(target_name IN LISTS SFML_ENABLED_TARGETS)
+    if(TARGET ${target_name})
+        target_link_libraries(${target_name} PRIVATE sfml-audio sfml-system)
+        target_compile_definitions(${target_name} PRIVATE SFML_STATIC)
+    endif()
+endforeach()
 
-    # Copy Assimp DLL for RubiksCube
-    add_custom_command(TARGET RubiksCube POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/lib/assimp/bin/assimp-vc143-mt.dll"
-        $<TARGET_FILE_DIR:RubiksCube>)
-endif()
+target_link_libraries(CollisionSystem PRIVATE Threads::Threads)
+
+

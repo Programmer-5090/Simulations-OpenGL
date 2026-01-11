@@ -1,6 +1,6 @@
 #include "geometry_data.h"
 #include <functional>
-#include <glm/glm/glm.hpp>
+#include <glm/glm.hpp>
 
 class ParametricSurface : public GeometryData {
 public:
